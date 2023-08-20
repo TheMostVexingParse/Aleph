@@ -75,7 +75,7 @@ class HASH_TABLE {
         memset(type,   0, table_size * sizeof(char));
     }
 
-    inline void add_position(Board board, uint16_t move, int depth, int score, char type){
+    void add_position(Board board, uint16_t move, int depth, int score, char type){
         uint32_t entry = board.hash % table_size;
         uint32_t chsum = entry ^ move ^ depth ^ score;
         if (this->type[entry]==EXACT && type!=EXACT) return;
@@ -87,7 +87,7 @@ class HASH_TABLE {
         this->type[entry] = type;
     }
 
-    inline bool contains_entry(uint32_t entry, uint64_t hash, int depth){
+    bool contains_entry(uint32_t entry, uint64_t hash, int depth){
 
         if (this->depth[entry] < depth) return false;
         if ((entry ^ this->moves[entry] ^ this->depth[entry] ^ this->score[entry]) != this->chsums[entry]) return false;
@@ -95,7 +95,7 @@ class HASH_TABLE {
         else return false;
     }
 
-    inline bool contains_entry_with_move(uint32_t entry, uint64_t hash, uint16_t move){
+    bool contains_entry_with_move(uint32_t entry, uint64_t hash, uint16_t move){
         if ((entry ^ this->moves[entry] ^ this->depth[entry] ^ this->score[entry]) != this->chsums[entry]) return false;
         if (this->hashes[entry] == (uint32_t)(hash >> 32) && this->moves[entry] == move) return true;
         else return false;

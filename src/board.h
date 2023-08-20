@@ -760,8 +760,8 @@ class Board {
             uint64_t wqueen = original_bitboards[4];
             uint64_t bqueen = original_bitboards[10];
 
-            uint64_t wvalp = wknights | wbishops | wrooks | white_king;
-            uint64_t bvalp = bknights | bbishops | brooks | black_king;
+            // uint64_t wvalp = wknights | wbishops | wrooks | white_king;
+            // uint64_t bvalp = bknights | bbishops | brooks | black_king;
 
             wpawn_space = ~wpawn_space;
             bpawn_space = ~bpawn_space;
@@ -770,28 +770,28 @@ class Board {
                 int sq = getlsb(wknights);
                 uint64_t moves = knight_move_lookup_table[sq] & (~pieces[1]) & bpawn_space;
                 mg_score += bitcount(moves) * knight_mobility / bitcount(wknights);
-                score += bitcount(moves & bvalp) * 6;
+                // score += bitcount(moves & bvalp) * 6;
                 wknights ^= (1ULL << sq);
             }
             while (bknights) {
                 int sq = getlsb(bknights);
                 uint64_t moves = knight_move_lookup_table[sq] & (~pieces[2]) & wpawn_space;
                 mg_score -= bitcount(moves) * knight_mobility / bitcount(bknights);
-                score -= bitcount(moves & wvalp) * 6;
+                // score -= bitcount(moves & wvalp) * 6;
                 bknights ^= (1ULL << sq);
             }
             while (wbishops) {
                 int sq = getlsb(wbishops);
                 uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[1]) & bpawn_space;
                 mg_score += bitcount(moves) * bishop_mobility / bitcount(wbishops);
-                score += bitcount(moves & bvalp) * 6;
+                // score += bitcount(moves & bvalp) * 6;
                 wbishops ^= (1ULL << sq);
             }
             while (bbishops) {
                 int sq = getlsb(bbishops);
                 uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[2]) & wpawn_space;
                 mg_score -= bitcount(moves) * bishop_mobility / bitcount(bbishops);
-                score -= bitcount(moves & wvalp) * 6;
+                // score -= bitcount(moves & wvalp) * 6;
                 bbishops ^= (1ULL << sq);
             }
             while (wrooks) {
@@ -799,7 +799,7 @@ class Board {
                 uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[1]) & bpawn_space;
                 mg_score += bitcount(moves) * rook_mobility / bitcount(wrooks);
                 if (!(double_pawns[sq & 7] & pieces[1])) score += 15;
-                score += bitcount(moves & bvalp) * 4;
+                // score += bitcount(moves & bvalp) * 4;
                 wrooks ^= (1ULL << sq);
             }
             while (brooks) {
@@ -807,7 +807,7 @@ class Board {
                 uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[2]) & wpawn_space;
                 mg_score -= bitcount(moves) * rook_mobility / bitcount(brooks);
                 if (!(double_pawns[sq & 7] & pieces[3])) score -= 15;
-                score -= bitcount(moves & wvalp) * 4;
+                // score -= bitcount(moves & wvalp) * 4;
                 brooks ^= (1ULL << sq);
             }
             while (wqueen) {
@@ -815,14 +815,14 @@ class Board {
                 wqueen ^= (1ULL << sq);
                 uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[1]) & bpawn_space;
                 mg_score += bitcount(moves) * queen_mobility;
-                score += bitcount(moves & bvalp) * 2;
+                // score += bitcount(moves & bvalp) * 2;
             }
             while (bqueen) {
                 int sq = getlsb(bqueen);
                 bqueen ^= (1ULL << sq);
                 uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[2]) & wpawn_space;
                 mg_score -= bitcount(moves) * queen_mobility;
-                score -= bitcount(moves & wvalp) * 2;
+                // score -= bitcount(moves & wvalp) * 2;
             }
 
             if (side_to_move == WHITE)
@@ -1606,7 +1606,7 @@ class Board {
             updateBoard();
         }
 
-        inline bool isCapture(int from, int to) {
+        bool isCapture(int from, int to) {
             if (pieces[0] & (1ULL << to)) {
                 return false;
             } return true;

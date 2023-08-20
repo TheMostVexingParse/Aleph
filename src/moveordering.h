@@ -2,7 +2,7 @@
 #include "search.h"
 
 
-inline int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
+int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
     int fromsq = (move >> 6) & 0b111111;
     int tosq = move & 0b111111;
     int fromPiece = getSquare(fromsq);
