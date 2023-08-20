@@ -1,0 +1,1 @@
+g++ uci.cpp -O2 -o main.exe && cls && main.exe

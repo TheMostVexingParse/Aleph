@@ -1,0 +1,1 @@
+g++ uci.cpp -Ofast -o main.exe -march=native -fuse-ld=lld -fpermissive -static && cls && main.exe
