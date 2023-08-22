@@ -19,20 +19,21 @@ class Perft{
         auto moves = board.generateMovesWithoutSorting();
         for (int i = 0; i < 256; i++) {
             uint16_t move = moves[i];
-            if (move == 0) break;
+            if (move == 0) continue;
             Board copy(board);
             copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
+            copy.makeNullMove();
+            if (copy.isInCheck()) continue;
+            copy.makeNullMove();
             uint32_t movec = traverse_root_trees(copy, depth-1);
             total_nodes += movec;
             std::cout << moveNotation((move >> 6) & 0b111111, move & 0b111111, board) << "   " << movec << std::endl;
         }
+        delete [] moves;
         std::cout << std::endl << "Total: " << total_nodes << std::endl;
     }
-    int traverse_root_trees(Board board, int depth){
-        if (!board.original_bitboards[5] || !board.original_bitboards[11]) {
-            return 0;
-        }
-        if (!depth) return 1;
+    int traverse_root_trees(Board & board, int depth){
+        // if (!depth) return 1;
         uint32_t collected = 0;
         auto moves = board.generateMovesWithoutSorting();
         for (int i = 0; i < 256; i++) {
@@ -40,10 +41,15 @@ class Perft{
             if (move == 0) break;
             Board copy(board);
             copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
-            int is_fail = traverse_root_trees(copy, depth-1);
-            if (is_fail < 1) return is_fail+1;
-            collected += is_fail;
+            copy.makeNullMove();
+            if (copy.isInCheck()) continue;
+            copy.makeNullMove();
+            if (depth == 1)
+                collected++;
+            else
+                collected += traverse_root_trees(copy, depth-1);
         }
+        delete [] moves;
         return collected;
     }
 };

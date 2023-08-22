@@ -97,17 +97,18 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
     int safety_overhead = 50;
     int max_time = movetime;
     int panic_time = 0;
+    int moves_to_go = ((winc && board.side_to_move == WHITE) || (binc && board.side_to_move == BLACK) ? 20 : 45);
     if (movetime != INT_MAX)
         goto movetime_calc;
     else {
         if (wtime > 0 || btime > 0) {
             int base_time = 0;
             if (board.side_to_move == WHITE)
-                base_time = wtime / 20 + winc * 3 / 4;
+                base_time = wtime / moves_to_go + winc * 3 / 4;
             else
-                base_time = btime / 20 + binc * 3 / 4;
-            max_time = std::max(10, 2*base_time-safety_overhead);
-            movetime = (int)std::max((double)10, 1.35*((float)base_time)-safety_overhead);
+                base_time = btime / moves_to_go + binc * 3 / 4;
+            max_time = std::max(5, 2*base_time-safety_overhead);
+            movetime = (int)std::max((double)5, 1.35*((float)base_time)-safety_overhead);
             panic_time = (max_time - movetime) / 8;
         }
     }
@@ -368,7 +369,7 @@ int main() {
             board.printChessBoard();
         }
 
-        if (input == "exit") {
+        if (input == "exit" || input == "quit") {
             break;
         }
     }

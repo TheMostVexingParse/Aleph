@@ -14,13 +14,12 @@ int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
         score += 32768;
     } else if (TT.contains_entry_with_move(entry, this->hash, move)) {
         score += 16384;
-    } else if (isCapture(fromsq, tosq)){
+    }
+    if (isCapture(fromsq, tosq)){
         score += 8192 + (5 * (toPiece&0b111) - (fromPiece&0b111)) * 50;
-    }
-    else if (KILLER_MOVES[0][depth] == move) {
+    } else if (KILLER_MOVES[0][depth] == move) {
         score += 2048;
-    }
-    else if (KILLER_MOVES[1][depth] == move) {
+    } else if (KILLER_MOVES[1][depth] == move) {
         score += 1024;
     }
     score += HISTORY_HEURISTICS[fromsq][tosq];

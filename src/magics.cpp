@@ -18,7 +18,7 @@
 #include <string.h>
 
 // define bitboard type
-#define U64 unsigned long long
+#define U64 uint64_t
 
 // bits manipulations
 #define get_bit(bitboard, square) (bitboard & (1ULL << square))
@@ -515,7 +515,7 @@ void init_sliders_attacks(int is_bishop)
 }
 
 // lookup bishop attacks 
-U64 get_bishop_attacks(int square, U64 occupancy) {
+inline uint64_t get_bishop_attacks(int square, uint64_t occupancy) {
 	
 	// calculate magic index
 	occupancy &= bishop_masks[square];
@@ -528,7 +528,7 @@ U64 get_bishop_attacks(int square, U64 occupancy) {
 }
 
 // lookup rook attacks 
-U64 get_rook_attacks(int square, U64 occupancy) {
+inline uint64_t get_rook_attacks(int square, uint64_t occupancy) {
 	
 	// calculate magic index
 	occupancy &= rook_masks[square];

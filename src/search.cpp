@@ -55,7 +55,7 @@ public:
                 score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
             else {
 
-                score = -alphaBeta(&line, copy, depth - 1, -alpha-1, -alpha, -color, 1, movetime, false);
+                score = -alphaBeta(&line, copy, depth - 1, -alpha-1, -alpha, -color, 1, movetime, true);
                 if (score > alpha && score < beta) { 
                     score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
 
@@ -140,17 +140,14 @@ public:
                     break;
                 case UPPERBOUND:
                     if (ttScore <= alpha) { return ttScore; }
-
                     break;
                 case LOWERBOUND:
                     if (ttScore >= beta) { return ttScore; }
-
                     break;
                 default:
                     ttHits--;
                     break;
             }
-
         }
 
         int root_extensions = 0;
@@ -161,7 +158,23 @@ public:
         if (board.isInCheck()){
             isInCheck = true;
             root_extensions++;
-        } 
+        }
+        // else if (doNull && depth > 3 && bitcount(~board.pieces[0]) > 14){
+        //     int reduction = depth > 6 ? 4 : 3;
+        //     Board copy(board);
+        //     copy.makeNullMove();
+        //     LINE discard_line;
+        //     int score = -alphaBeta(&discard_line, copy, std::max(depth - 1 - reduction, 1), -beta, 1-beta, -color, pdepth+1, movetime, false, false); // -AlphaBeta (0-beta, 1-beta, depth-R-1)
+        //     if (score >= beta ) {
+        //         // return beta;
+        //         depth = std::max(1, depth-3);
+        //         if ( depth <= 0 ){
+        //             pline->cmove = 0;
+        //             return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
+        //         }
+        //     }
+        // }
+
         if (depth <= 0) {
             pline->cmove = 0;
             return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
@@ -201,9 +214,9 @@ public:
             if (bSearchPv)
                 score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
             else {
-                score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -alpha-1, -alpha, -color, pdepth+1, movetime, false);
+                score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -alpha-1, -alpha, -color, pdepth+1, movetime, doNull);
                 if (score > alpha) { 
-                    score = -alphaBeta(&line, copy, depth - 1 + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
+                    score = -alphaBeta(&line, copy, depth - 1 + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, false);
                 }
             }
 

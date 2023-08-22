@@ -54,9 +54,10 @@ int hamming_weight(uint64_t x)
 inline int pst(uint64_t bitboard, const int* pieceSquareTables) {
     int sum = 0;
     while (bitboard) {
-        int square = bitScanForward(bitboard);
+        int square = __builtin_ctzll(bitboard);
         sum += pieceSquareTables[square];
         bitboard &= bitboard - 1;
+        // bitboard ^= (1ULL << square);
     }
     return sum;
 }
@@ -66,6 +67,11 @@ inline uint64_t leftShift(uint64_t left, int right) {
     if (right < 0) { return left << -right; }
     else { return left << right; }
 }
+
+// inline uint64_t leftShift(uint64_t left, int right) {
+//     if (right < 0) { return left >> -right; }
+//     else { return left << right; }
+// }
 
 int manhattanDistance(int sq1, int sq2) {
    int file1, file2, rank1, rank2;

@@ -72,8 +72,11 @@
 #define knight_mask             0b0000000000101000010001000000000001000100001010000000000000000000
 #define king_mask               0b0000000000000000001110000010100000111000000000000000000000000000
 
-#define wking_prot_mask         0b0011100001111100011111000000000000000000000000000000000000000000
-#define bking_prot_mask         0b0000000000000000011111000111110000111000000000000000000000000000
+// #define wking_prot_mask         0b0011100001111100011111000000000000000000000000000000000000000000
+// #define bking_prot_mask         0b0000000000000000011111000111110000111000000000000000000000000000
+
+#define wking_prot_mask         0b0011100001111100000000000000000000000000000000000000000000000000
+#define bking_prot_mask         0b0000000000000000000000000111110000111000000000000000000000000000
 
 #define white_short_castling    0b0000000000000000000000000000000000000000000000000000000001100000
 #define white_long_castling     0b0000000000000000000000000000000000000000000000000000000000001110
@@ -313,11 +316,11 @@ const uint64_t double_pawns[8] = {
      0b0100000001000000010000000100000001000000010000000100000001000000 ,
 };
 
-const int mg_values[5]       = { 100, 337, 365, 500, 1025 };
-const int eg_values[5]       = { 125, 295, 320, 550,  936 };
+const int mg_values[5]       = { 86, 337, 365, 500, 1025 };
+const int eg_values[5]       = { 100, 295, 320, 550,  936 };
 const int phase_scores[5]    = { 0,  1  ,  1 ,  2 ,  4   };
 
-const int knight_mobility = 2;
+const int knight_mobility = 5;
 const int bishop_mobility = 2;
 const int rook_mobility   = 4;
 const int queen_mobility  = 2;
@@ -654,19 +657,19 @@ class Board {
             if (pawn_mask & original_bitboards[opponent_offset])
                 return true;
 
-            uint64_t occ_bb = (~pieces[0]) ^ original_bitboards[5 + current_offset];
+            uint64_t occ_bb = (~pieces[0]);// ^ original_bitboards[5 + current_offset];
 
-            uint64_t knight_bb  = original_bitboards[1 + opponent_offset];
             uint64_t bishop_bb  = original_bitboards[2 + opponent_offset];
-            uint64_t rook_bb    = original_bitboards[3 + opponent_offset];
             uint64_t queen_bb   = original_bitboards[4 + opponent_offset];
 
             uint64_t bishop_rays = get_bishop_attacks(sq, occ_bb);
             if (bishop_rays & bishop_bb || bishop_rays & queen_bb) return true;
 
+            uint64_t rook_bb    = original_bitboards[3 + opponent_offset];
             uint64_t rook_rays = get_rook_attacks(sq, occ_bb);
             if (rook_rays & rook_bb || rook_rays & queen_bb) return true;
 
+            uint64_t knight_bb  = original_bitboards[1 + opponent_offset];
             if (knight_bb & knight_move_lookup_table[sq]) return true;
 
             int king_square = getlsb(original_bitboards[5 + opponent_offset]);
@@ -682,71 +685,87 @@ class Board {
         int scoreThreadMove(uint16_t move, uint32_t entry);
 
         int getScore() {
-
+            
             int score = 0;
+            int game_phase = 0;
 
             uint64_t white_pawns = original_bitboards[0];
             uint64_t black_pawns = original_bitboards[6];
             uint64_t white_pawns_copy = white_pawns;
             uint64_t black_pawns_copy = black_pawns;
-            uint64_t wpawn_space = 0;
-            uint64_t bpawn_space = 0;
+            uint64_t wpawn_space_init = 0;
+            uint64_t bpawn_space_init = 0;
             while (white_pawns){
                 int sq = getlsb(white_pawns);
                 int file = sq & 7;
+                int rank = sq >> 3;
                 white_pawns &= white_pawns - 1;
-                uint64_t adjacent_pawns = white_pawns_copy & isolated_pawns[file];
-                uint64_t pawn_tower = bitcount(white_pawns_copy & double_pawns[file]);
                 bool passed_pawn = !bitcount(black_pawns_copy & ((double_pawns[file] | isolated_pawns[file])));
-                if (passed_pawn) score += 45;
-                if (!adjacent_pawns) score -= 20;
-                if (pawn_tower > 1) score -= 10 * pawn_tower;
-                wpawn_space |= white_pawn_move_lookup_table[sq];
+                if (passed_pawn) score += 10 * rank;
+                // uint64_t adjacent_pawns = white_pawns_copy & isolated_pawns[file];
+                // uint64_t pawn_tower = bitcount(white_pawns_copy & double_pawns[file]);
+                // if (!adjacent_pawns) score -= 20;
+                // if (pawn_tower > 1) score -= 20 * pawn_tower;
+                wpawn_space_init |= white_pawn_move_lookup_table[sq];
             }
             while (black_pawns){
                 int sq = getlsb(black_pawns);
                 int file = sq & 7;
+                int rank = sq >> 3;
                 black_pawns &= black_pawns - 1;
-                uint64_t adjacent_pawns = black_pawns_copy & isolated_pawns[file];
-                uint64_t pawn_tower = bitcount(black_pawns_copy & double_pawns[file]);
                 bool passed_pawn = !bitcount(white_pawns_copy & ((double_pawns[file] | isolated_pawns[file])));
-                if (passed_pawn) score -= 45;
-                if (!adjacent_pawns) score += 20;
-                if (pawn_tower > 1) score += 10 * pawn_tower;
-                bpawn_space |= black_pawn_move_lookup_table[sq];
+                if (passed_pawn) score -= 10 * (7 - rank);
+                // uint64_t adjacent_pawns = black_pawns_copy & isolated_pawns[file];
+                // uint64_t pawn_tower = bitcount(black_pawns_copy & double_pawns[file]);
+                // if (!adjacent_pawns) score += 20;
+                // if (pawn_tower > 1) score += 20 * pawn_tower;
+                bpawn_space_init |= black_pawn_move_lookup_table[sq];
             }
-            score += bitcount(wpawn_space) - bitcount(bpawn_space);
 
-            int game_phase = 0;
+            score += 100   * (bitcount(original_bitboards[0]) - bitcount(original_bitboards[6]));
+            score += 300   * (bitcount(original_bitboards[1]) - bitcount(original_bitboards[7]));
+            score += 330   * (bitcount(original_bitboards[2]) - bitcount(original_bitboards[8]));
+            score += 500   * (bitcount(original_bitboards[3]) - bitcount(original_bitboards[9]));
+            score += 900   * (bitcount(original_bitboards[4]) - bitcount(original_bitboards[10]));
+                
+            for (int i=0; i<5; i++) {
+                int wbitcount = bitcount(original_bitboards[i]);
+                int bbitcount = bitcount(original_bitboards[6+i]);
+                game_phase += phase_scores[i] * (wbitcount + bbitcount);
+                score += pst(original_bitboards[i], white_pst_table[i]) ;
+                score -= pst(original_bitboards[6+i], black_pst_table[i]) ;
+            }
 
             uint64_t white_king = original_bitboards[5];
             uint64_t black_king = original_bitboards[11];
 
             int wking_square = getlsb(white_king);
-            uint64_t wking_defence_bb = wking_defence_table[wking_square];
-            score -= bitcount(wking_defence_bb & pieces[0]) * 8;
-            score -= bitcount(wking_defence_bb & pieces[2]) * 16;
-            score += bitcount(wking_defence_bb & pieces[1]) * 12;
-
             int bking_square = getlsb(black_king);
-            uint64_t bking_defence_bb = bking_defence_table[bking_square];
-            score += bitcount(bking_defence_bb & pieces[0]) * 8;
-            score += bitcount(bking_defence_bb & pieces[1]) * 16;
-            score -= bitcount(bking_defence_bb & pieces[2]) * 12;
 
             int mg_score = king_pos_middle[FLIP(wking_square)];
             int eg_score = king_pos_end[FLIP(wking_square)];
             mg_score -= king_pos_middle[bking_square];
             eg_score -= king_pos_end[bking_square];
 
-            for (int i=0; i<5; i++) {
-                int wbitcount = bitcount(original_bitboards[i]);
-                int bbitcount = bitcount(original_bitboards[6+i]);
-                score += pst(original_bitboards[i], white_pst_table[i]) ;
-                score -= pst(original_bitboards[6+i], black_pst_table[i]) ;
-                game_phase  += phase_scores[i];
-                mg_score += mg_values[i] * (wbitcount - bbitcount);
-                eg_score += eg_values[i] * (wbitcount - bbitcount);
+            uint64_t wking_defence_bb = wking_defence_table[wking_square];
+            mg_score -= bitcount(wking_defence_bb & pieces[0]) * 2;
+            mg_score -= bitcount(wking_defence_bb & pieces[2]) * 6;
+            mg_score += bitcount(wking_defence_bb & pieces[1]) * 3;
+
+            uint64_t bking_defence_bb = bking_defence_table[bking_square];
+            mg_score += bitcount(bking_defence_bb & pieces[0]) * 2;
+            mg_score += bitcount(bking_defence_bb & pieces[1]) * 6;
+            mg_score -= bitcount(bking_defence_bb & pieces[2]) * 3;
+
+            if (side_to_move == WHITE)
+                 mg_score += 14;
+            else mg_score -= 14;
+
+            game_phase = std::min(game_phase, 24);
+
+            if (game_phase > 16) {
+                score += ((mg_score * game_phase) + (eg_score * (24 - game_phase))) / 24;
+                return score;
             }
 
             uint64_t occupied = ~pieces[0];
@@ -760,77 +779,96 @@ class Board {
             uint64_t wqueen = original_bitboards[4];
             uint64_t bqueen = original_bitboards[10];
 
-            // uint64_t wvalp = wknights | wbishops | wrooks | white_king;
-            // uint64_t bvalp = bknights | bbishops | brooks | black_king;
+            uint64_t wvalp = wknights | wbishops | wrooks | white_king | bking_defence_bb | wking_defence_bb;
+            uint64_t bvalp = bknights | bbishops | brooks | black_king | wking_defence_bb | bking_defence_bb;
 
-            wpawn_space = ~wpawn_space;
-            bpawn_space = ~bpawn_space;
+            uint64_t wpawn_space = ~wpawn_space_init;
+            uint64_t bpawn_space = ~bpawn_space_init;
 
             while (wknights) {
                 int sq = getlsb(wknights);
                 uint64_t moves = knight_move_lookup_table[sq] & (~pieces[1]) & bpawn_space;
-                mg_score += bitcount(moves) * knight_mobility / bitcount(wknights);
-                // score += bitcount(moves & bvalp) * 6;
+                int mobility = bitcount(moves) * knight_mobility;
+                if (mobility <= 3 && (1ULL<<sq) & bpawn_space_init) score -= 300 / (mobility+1);
+                mg_score += mobility;
+                score += bitcount(moves & bvalp) * 8;
                 wknights ^= (1ULL << sq);
+                // wknights &= wknights - 1;
             }
             while (bknights) {
                 int sq = getlsb(bknights);
                 uint64_t moves = knight_move_lookup_table[sq] & (~pieces[2]) & wpawn_space;
-                mg_score -= bitcount(moves) * knight_mobility / bitcount(bknights);
-                // score -= bitcount(moves & wvalp) * 6;
+                int mobility = bitcount(moves) * knight_mobility;
+                if (mobility <= 3 && (1ULL<<sq) & wpawn_space_init) score += 300 / (mobility+1);
+                mg_score -= mobility;
+                score -= bitcount(moves & wvalp) * 8;
                 bknights ^= (1ULL << sq);
+                // bknights &= bknights - 1;
             }
             while (wbishops) {
                 int sq = getlsb(wbishops);
                 uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[1]) & bpawn_space;
-                mg_score += bitcount(moves) * bishop_mobility / bitcount(wbishops);
-                // score += bitcount(moves & bvalp) * 6;
+                int mobility = bitcount(moves) * bishop_mobility;
+                if (mobility <= 3 && (1ULL<<sq) & bpawn_space_init) score -= 300 / (mobility+1);
+                mg_score += mobility;
+                score += bitcount(moves & bvalp) * 8;
                 wbishops ^= (1ULL << sq);
+                // wbishops &= wbishops - 1;
             }
             while (bbishops) {
                 int sq = getlsb(bbishops);
                 uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[2]) & wpawn_space;
-                mg_score -= bitcount(moves) * bishop_mobility / bitcount(bbishops);
-                // score -= bitcount(moves & wvalp) * 6;
+                int mobility = bitcount(moves) * bishop_mobility;
+                if (mobility <= 3 && (1ULL<<sq) & wpawn_space_init) score += 300 / (mobility+1);
+                mg_score -= mobility;
+                score -= bitcount(moves & wvalp) * 8;
                 bbishops ^= (1ULL << sq);
+                // bbishops &= bbishops - 1;
             }
             while (wrooks) {
                 int sq = getlsb(wrooks);
                 uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[1]) & bpawn_space;
-                mg_score += bitcount(moves) * rook_mobility / bitcount(wrooks);
-                if (!(double_pawns[sq & 7] & pieces[1])) score += 15;
-                // score += bitcount(moves & bvalp) * 4;
+                int mobility = bitcount(moves) * rook_mobility;
+                if (mobility <= 5 && (1ULL<<sq) & bpawn_space_init) score -= 500 / (mobility+1);
+                mg_score += mobility;
+                if (!(double_pawns[sq & 7] & pieces[1])) score += 25;
+                score += bitcount(moves & bvalp) * 10;
                 wrooks ^= (1ULL << sq);
+                // wrooks &= wrooks - 1;
             }
             while (brooks) {
                 int sq = getlsb(brooks);
                 uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[2]) & wpawn_space;
-                mg_score -= bitcount(moves) * rook_mobility / bitcount(brooks);
-                if (!(double_pawns[sq & 7] & pieces[3])) score -= 15;
-                // score -= bitcount(moves & wvalp) * 4;
+                int mobility = bitcount(moves) * rook_mobility;
+                if (mobility <= 5 && (1ULL<<sq) & wpawn_space_init) score += 500 / (mobility+1);
+                mg_score -= mobility;
+                if (!(double_pawns[sq & 7] & pieces[3])) score -= 25;
+                score -= bitcount(moves & wvalp) * 10;
                 brooks ^= (1ULL << sq);
+                // brooks &= brooks - 1;
             }
             while (wqueen) {
                 int sq = getlsb(wqueen);
                 wqueen ^= (1ULL << sq);
                 uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[1]) & bpawn_space;
-                mg_score += bitcount(moves) * queen_mobility;
-                // score += bitcount(moves & bvalp) * 2;
+                int mobility = bitcount(moves) * queen_mobility;
+                if (mobility <= 5 && (1ULL<<sq) & bpawn_space_init) score -= 800 / (mobility+1);
+                mg_score += mobility;
+                score += bitcount(moves & bvalp) * 14;
+                // wqueen &= wqueen - 1;
             }
             while (bqueen) {
                 int sq = getlsb(bqueen);
                 bqueen ^= (1ULL << sq);
                 uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[2]) & wpawn_space;
-                mg_score -= bitcount(moves) * queen_mobility;
-                // score -= bitcount(moves & wvalp) * 2;
+                int mobility = bitcount(moves) * queen_mobility;
+                if (mobility <= 5 && (1ULL<<sq) & wpawn_space_init) score += 800 / (mobility+1);
+                mg_score -= mobility;
+                score -= bitcount(moves & wvalp) * 14;
+                // bqueen &= bqueen - 1;
             }
 
-            if (side_to_move == WHITE)
-                 mg_score += 18;
-            else mg_score -= 18;
-
-            game_phase = std::min(game_phase, 24);
-            score += ((mg_score * game_phase) + (eg_score * (24-game_phase)))/24;
+            score += ((mg_score * game_phase) + (eg_score * (24 - game_phase))) / 24;
 
             return score;
 
@@ -1366,24 +1404,24 @@ class Board {
                 }
             }
 
-            struct ScoredMove {
-                uint16_t move;
-                int score;
-            };
-            ScoredMove scored_moves[256];
-            memset(scored_moves, 0, 256*sizeof(*scored_moves));
-            uint32_t entry = this->hash % table_size;
-            for (int i = 0; i < append_index; i++) {
-                uint16_t move = moves[i];
-                scored_moves[i] = { move, scoreThreadMove(move, entry) };
-            }
-            std::sort(scored_moves, scored_moves + append_index,
-                [](const ScoredMove& a, const ScoredMove& b) {
-                    return a.score > b.score;
-                });
-            for (int i = 0; i < append_index; i++) {
-                moves[i] = scored_moves[i].move;
-            }
+            // struct ScoredMove {
+            //     uint16_t move;
+            //     int score;
+            // };
+            // ScoredMove scored_moves[256];
+            // memset(scored_moves, 0, 256*sizeof(*scored_moves));
+            // uint32_t entry = this->hash % table_size;
+            // for (int i = 0; i < append_index; i++) {
+            //     uint16_t move = moves[i];
+            //     scored_moves[i] = { move, scoreMove(move, entry, depth, pdepth) };
+            // }
+            // std::sort(scored_moves, scored_moves + append_index,
+            //     [](const ScoredMove& a, const ScoredMove& b) {
+            //         return a.score > b.score;
+            //     });
+            // for (int i = 0; i < append_index; i++) {
+            //     moves[i] = scored_moves[i].move;
+            // }
 
             return moves;
         }
