@@ -12,6 +12,17 @@ typedef struct LINE {
     uint16_t argmove[64] = {0};
 }   LINE;
 
+typedef struct HISTORY_LINE {
+    int cmove = 0;             
+    uint16_t argmove[256] = {0};
+}   HISTORY_LINE;
+
+typedef struct HASH_HISTORY {
+    int cmove = 0;             
+    uint64_t arghash[256] = {0};
+}   HASH_HISTORY;
+
+
 class Perft{
     public:
     uint32_t total_nodes = 0;
@@ -128,6 +139,8 @@ int HISTORY_HEURISTICS[64][64] = {0};
 uint16_t KILLER_MOVES[2][128] = {0};
 HASH_TABLE TT;
 
-int         PV_LENGTH[128]      = {0};
-uint16_t    PV_TABLE [128][128] = {0};
-LINE        LOOKUP_LINE;
+int             PV_LENGTH[128]      = {0};
+uint16_t        PV_TABLE [128][128] = {0};
+LINE            LOOKUP_LINE;
+HISTORY_LINE    HISTORY;
+HASH_HISTORY    HASH_HIST;

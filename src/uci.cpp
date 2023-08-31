@@ -124,6 +124,7 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
 
     int alpha = -120000;
     int beta  =  120000;
+    const int MATE_SCORE = 75000;
     int previous_score = 0;
     int window = 45;
     int panic_window = 0;
@@ -141,10 +142,10 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
             break;
         }
 
-        if (i > 2 && (previous_score - score) > 50 && (movetime+panic_time) < max_time) {
+        if (i > 2 && (previous_score - score) > 50 && (movetime+panic_time-safety_overhead) < max_time) {
             movetime += panic_time;
             if (debug_mode)
-                std::cout << "info string Expanding window due to eval score drop." << std::endl;
+                std::cout << "info string Expanding window due to eval score drop." << "\n";
         }
 
         previous_score = score;
@@ -172,6 +173,7 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
         for (int i = 0; i < 64; i++) {
             if (!search.PVline.argmove[i]) { break; }
             else {
+                if (!PVcopy.getSquare((search.PVline.argmove[i] >> 6) & 0b111111)) break;
                 PVcopy.makeMove((search.PVline.argmove[i] >> 6) & 0b111111, search.PVline.argmove[i] & 0b111111);
                 Board nullCheck(PVcopy);
                 nullCheck.makeNullMove();
@@ -180,6 +182,10 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
             }
         }
         std::cout << std::endl;
+        if (score >= MATE_SCORE) {
+            alpha = score;
+            if (alpha >= beta) break;
+        }
     }
     std::cout << "bestmove " << bestMove << std::endl;
     search_complete = true;
@@ -193,13 +199,15 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
         &HISTORY_HEURISTICS[0][0] + sizeof(HISTORY_HEURISTICS) / sizeof(HISTORY_HEURISTICS[0][0]),
     0);
 
+    TT.flush();
+
 }
 
 int main() {
 
     init_move_lookup_tables();
 
-    std::cout << "info string Initialized slider attack tables." << std::endl;
+    std::cout << "info string Initialized slider attack tables." << "\n";
 
     GoOptions goOptions;
 
@@ -222,23 +230,23 @@ int main() {
 
         for (const auto& substring : substrings) {
             if (scanIndex == 0 && substring == "uci" && substrings.size() == 1) {
-                std::cout << std::endl;
-                std::cout << "id name Alephv0.0.1a" << std::endl;
-                std::cout << "id author kerbal_galactic" << std::endl;
-                std::cout << std::endl;
-                std::cout << "option name Threads type spin default 1 min 1 max 8" << std::endl;
-                std::cout << "option name Hash type spin default 64 min 1 max 128" << std::endl;
-                std::cout << "uciok" << std::endl;
+                std::cout << "\n";
+                std::cout << "id name Alephv0.0.1a" << "\n";
+                std::cout << "id author kerbal_galactic" << "\n";
+                std::cout << "\n";
+                std::cout << "option name Threads type spin default 1 min 1 max 8" << "\n";
+                std::cout << "option name Hash type spin default 64 min 1 max 128" << "\n";
+                std::cout << "uciok" << "\n";
             } else if (scanIndex == 0 && substring == "setoption") {
                 if (substrings.size() < scanIndex + 3) {
-                    std::cout << "Option not found." << std::endl;
+                    std::cout << "Option not found." << "\n";
                     break;
                 } else if (substrings[scanIndex + 1] != "name") {
-                    std::cout << "Option not found." << std::endl;
+                    std::cout << "Option not found." << "\n";
                     break;
                 } else if (options.find(substrings[scanIndex + 2]) != options.end()) {
                     if (options[substrings[scanIndex + 2]][1] == "noedit") {
-                        std::cout << "No such option: " << substrings[scanIndex + 2] << std::endl;
+                        std::cout << "No such option: " << substrings[scanIndex + 2] << "\n";
                     } else {
                         if (substrings.size() == 5) {
                             options[substrings[scanIndex + 2]][0] = substrings[scanIndex + 4];
@@ -246,10 +254,10 @@ int main() {
                     }
                 } else {
                     std::string lastSubstring = substrings.back();
-                    std::cout << "No such option: " << lastSubstring << std::endl;
+                    std::cout << "No such option: " << lastSubstring << "\n";
                 }
             } else if (scanIndex == 0 && substring == "isready") {
-                std::cout << "readyok" << std::endl;
+                std::cout << "readyok" << "\n";
             } else if (scanIndex == 0 && substring == "ucinewgame") {
                 fen = "";
                 movelist.clear();
@@ -285,7 +293,16 @@ int main() {
                     }
                 } else if (substrings[scanIndex + 1] == "moves") {
                     for (auto move : std::vector<std::string>(substrings.begin() + scanIndex + 2, substrings.end())) {
-                        board.makeUCIMove(move);
+                        int return_code = board.makeUCIMove(move);
+                        HISTORY.argmove[HISTORY.cmove] = board.numerizeUCIMove(move);
+                        HASH_HIST.arghash[HISTORY.cmove] = board.hash;
+                        if (board.getSquare((HISTORY.argmove[HISTORY.cmove]>>6)&0b111111) & 0b111 == PAWN || return_code == 1) {
+                            memset(HISTORY.argmove, 0, 256*sizeof(uint16_t));
+                            memset(HASH_HIST.arghash, 0, 256*sizeof(uint64_t));
+                            HISTORY.cmove = 0;
+                            continue;
+                        }
+                        HISTORY.cmove++;
                     }
                 }
             } else if (scanIndex == 0 && substring == "go") {

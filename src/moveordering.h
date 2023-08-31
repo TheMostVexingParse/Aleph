@@ -16,7 +16,7 @@ int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
         score += 16384;
     }
     if (isCapture(fromsq, tosq)){
-        score += 8192 + (5 * (toPiece&0b111) - (fromPiece&0b111)) * 50;
+        score += 8192 + (9 * (toPiece&0b111) - (fromPiece&0b111)) * 100;
     } else if (KILLER_MOVES[0][depth] == move) {
         score += 2048;
     } else if (KILLER_MOVES[1][depth] == move) {

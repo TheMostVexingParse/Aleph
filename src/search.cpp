@@ -160,18 +160,18 @@ public:
             root_extensions++;
         }
         // else if (doNull && depth > 3 && bitcount(~board.pieces[0]) > 14){
-        //     int reduction = depth > 6 ? 4 : 3;
+        //     int reduction = depth > 6 ? 3 : 2;
         //     Board copy(board);
         //     copy.makeNullMove();
         //     LINE discard_line;
         //     int score = -alphaBeta(&discard_line, copy, std::max(depth - 1 - reduction, 1), -beta, 1-beta, -color, pdepth+1, movetime, false, false); // -AlphaBeta (0-beta, 1-beta, depth-R-1)
         //     if (score >= beta ) {
-        //         // return beta;
-        //         depth = std::max(1, depth-3);
-        //         if ( depth <= 0 ){
-        //             pline->cmove = 0;
-        //             return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
-        //         }
+        //         return beta;
+        //         // depth = std::max(1, depth-3);
+        //         // if ( depth <= 0 ){
+        //         //     pline->cmove = 0;
+        //         //     return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
+        //         // }
         //     }
         // }
 
@@ -196,21 +196,33 @@ public:
             }
         }
 
-        bool bSearchPv = true;
-
         int legalMoves = 0;
+
+        bool bSearchPv = true;
 
         for (int i = 0; i < 256; i++) {
             if (stop) return 0;
             uint16_t move = moves[i];
             if (move == 0) break;
+            int score;
             Board copy(board);
             copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
             Board nullCheck(copy);
             nullCheck.makeNullMove();
             if (nullCheck.isInCheck()) continue;
             legalMoves++;
-            int score;
+
+            int repetitions = 0;
+            for (int j = 0; j < 256; j++) {
+                repetitions += HASH_HIST.arghash[j] == board.hash;
+                if (repetitions >= 2) {
+                    score = 0;
+                    goto repetition;
+                }
+            }
+
+            HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
+            
             if (bSearchPv)
                 score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
             else {
@@ -219,6 +231,8 @@ public:
                     score = -alphaBeta(&line, copy, depth - 1 + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, false);
                 }
             }
+
+            repetition:
 
             if (stop) return 0;
 
