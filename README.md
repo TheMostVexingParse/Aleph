@@ -6,9 +6,12 @@ A Simple Chess Engine
 ## Features
 
 ### Search
-- PV Search
+- ~PV Search~
+- Alpha/Beta
+- Late Move Reductions
 - Transposition Table
 - Check Extensions
+- Quiescence Search
   
 ### Move Ordering
 - MVV-LVA
