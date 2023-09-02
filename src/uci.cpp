@@ -67,7 +67,7 @@ std::string input;
 
 bool stop_break = false;
 
-bool debug_mode = true;
+bool debug_mode = false;
 
 void Stop() {
     while (true) {

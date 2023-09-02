@@ -67,16 +67,14 @@ class Perft{
 
 class HASH_TABLE {
     public:
-    uint32_t*   chsums  = new uint32_t[table_size];
-    uint32_t*   hashes  = new uint32_t[table_size]; 
+    uint64_t*   hashes  = new uint64_t[table_size]; 
     uint16_t*   moves   = new uint16_t[table_size]; 
     int*        depth   = new int[table_size];      
     int*        score   = new int[table_size];      
     char*       type    = new char[table_size];     
 
     HASH_TABLE(){ 
-        memset(chsums, 0, table_size * sizeof(uint32_t));
-        memset(hashes, 0, table_size * sizeof(uint32_t));
+        memset(hashes, 0, table_size * sizeof(uint64_t));
         memset(moves,  0, table_size * sizeof(uint16_t));
         memset(depth,  0, table_size * sizeof(int));
         memset(score,  0, table_size * sizeof(int));
@@ -84,8 +82,7 @@ class HASH_TABLE {
     }
 
     void flush(){
-        memset(chsums, 0, table_size * sizeof(uint32_t));
-        memset(hashes, 0, table_size * sizeof(uint32_t));
+        memset(hashes, 0, table_size * sizeof(uint64_t));
         memset(moves,  0, table_size * sizeof(uint16_t));
         memset(depth,  0, table_size * sizeof(int));
         memset(score,  0, table_size * sizeof(int));
@@ -94,10 +91,8 @@ class HASH_TABLE {
 
     void add_position(Board board, uint16_t move, int depth, int score, char type){
         uint32_t entry = board.hash % table_size;
-        uint32_t chsum = entry ^ move ^ depth ^ score;
         if (this->type[entry]==EXACT && type!=EXACT) return;
-        this->chsums[entry] = chsum;
-        this->hashes[entry] = (uint32_t)(board.hash >> 32);
+        this->hashes[entry] = board.hash;
         this->moves[entry] = move;
         this->depth[entry] = depth;
         this->score[entry] = score;
@@ -105,16 +100,13 @@ class HASH_TABLE {
     }
 
     bool contains_entry(uint32_t entry, uint64_t hash, int depth){
-
-        if (this->depth[entry] < depth) return false;
-        if ((entry ^ this->moves[entry] ^ this->depth[entry] ^ this->score[entry]) != this->chsums[entry]) return false;
-        if (this->hashes[entry] == (uint32_t)(hash >> 32)) return true;
+        if (this->depth[entry] <= depth) return false;
+        if (this->hashes[entry] == hash) return true;
         else return false;
     }
 
     bool contains_entry_with_move(uint32_t entry, uint64_t hash, uint16_t move){
-        if ((entry ^ this->moves[entry] ^ this->depth[entry] ^ this->score[entry]) != this->chsums[entry]) return false;
-        if (this->hashes[entry] == (uint32_t)(hash >> 32) && this->moves[entry] == move) return true;
+        if (this->hashes[entry] == hash && this->moves[entry] == move) return true;
         else return false;
     }
 

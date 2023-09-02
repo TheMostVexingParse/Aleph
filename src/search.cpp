@@ -37,7 +37,7 @@ public:
         if (!bestMove && !board.isInCheck()){
             return 0;
         }
-        bool bSearchPv = true;
+        // bool bSearchPv = true;
         for (int i = 0; i < 256; i++) {
             if (stop) {
                 delete[] moves;
@@ -50,17 +50,14 @@ public:
             Board nullCheck(copy);
             nullCheck.makeNullMove();
             if (nullCheck.isInCheck()) continue;
-            int score;
-            if (bSearchPv)
-                score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
-            else {
+            int score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
+            // else {
+            //     score = -alphaBeta(&line, copy, depth - 1, -alpha-1, -alpha, -color, 1, movetime, true);
+            //     if (score > alpha && score < beta) { 
+            //         score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
 
-                score = -alphaBeta(&line, copy, depth - 1, -alpha-1, -alpha, -color, 1, movetime, true);
-                if (score > alpha && score < beta) { 
-                    score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
-
-                }
-            }
+            //     }
+            // }
 
             if (stop) {
                 delete[] moves;
@@ -73,14 +70,14 @@ public:
 
             if (score > alpha) {
                 alpha = score;
-                bSearchPv = false;
+                // bSearchPv = false;
 
-                PV_TABLE[0][0] = move;
+                PV_TABLE[0][0] = bestMove;
                 for (int next_depth = 1; next_depth < PV_LENGTH[0]+1; next_depth++) {
                     PV_TABLE[0][next_depth] = PV_TABLE[1][next_depth];
                 } PV_LENGTH[0] = PV_LENGTH[1];
 
-                PVline.argmove[0] = move;
+                PVline.argmove[0] = bestMove;
                 memcpy(PVline.argmove + 1, line.argmove, line.cmove * 2);
                 PVline.cmove = line.cmove + 1;
 
@@ -147,7 +144,7 @@ public:
                 default:
                     ttHits--;
                     break;
-            }
+            }                
         }
 
         int root_extensions = 0;
@@ -198,7 +195,7 @@ public:
 
         int legalMoves = 0;
 
-        bool bSearchPv = true;
+        // bool bSearchPv = true;
 
         for (int i = 0; i < 256; i++) {
             if (stop) return 0;
@@ -212,6 +209,8 @@ public:
             if (nullCheck.isInCheck()) continue;
             legalMoves++;
 
+            bool do_full_search = false;
+
             int repetitions = 0;
             for (int j = 0; j < 256; j++) {
                 repetitions += HASH_HIST.arghash[j] == board.hash;
@@ -223,13 +222,20 @@ public:
 
             HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
             
-            if (bSearchPv)
-                score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
-            else {
-                score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -alpha-1, -alpha, -color, pdepth+1, movetime, doNull);
-                if (score > alpha) { 
-                    score = -alphaBeta(&line, copy, depth - 1 + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, false);
-                }
+            
+            // score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
+            
+            if (i > 12 && depth >= 3 && !board.isCapture((move >> 6) & 0b111111, move & 0b111111) && !board.isInCheck()){
+                const int lmr = 1;
+                score = -alphaBeta(&line, copy, depth - 1 - lmr, -alpha-1, -alpha, -color, pdepth+1, movetime, doNull);
+                if (score > alpha)
+                    do_full_search = true;
+            } else {
+                do_full_search = true;
+            }
+
+            if (do_full_search) {
+                score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, pdepth+1, movetime, doNull);
             }
 
             repetition:
@@ -253,7 +259,7 @@ public:
 
             if (score > alpha) {
                 alpha = score;
-                bSearchPv = false;
+                // bSearchPv = false;
 
                 PV_TABLE[pdepth][pdepth] = move;
                 for (int next_depth = pdepth+1; next_depth < PV_LENGTH[pdepth]+1; next_depth++) {
@@ -350,10 +356,10 @@ public:
             uint16_t move = moves[i];
             if (stop || move == 0) break;
 
-            if (board.isCapture((move >> 6) & 0b111111, move & 0b111111)) {
+            Board copy(board);
+            copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
 
-                Board copy(board);
-                copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
+            if (board.isCapture((move >> 6) & 0b111111, move & 0b111111) || copy.isInCheck()) {
 
                 int score = -quiescenceSearch(copy, -beta, -alpha, -color, pdepth+1, movetime, depth+1);
 
