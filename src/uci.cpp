@@ -59,7 +59,7 @@ struct GoOptions {
     int btime       = -1;
     int winc        = -1;
     int binc        = -1;
-    int depth       = 20;
+    int depth       = 30;
     uint64_t nodes  = 1000000000;
 };
 
@@ -67,7 +67,7 @@ std::string input;
 
 bool stop_break = false;
 
-bool debug_mode = false;
+bool debug_mode = true;
 
 void Stop() {
     while (true) {
@@ -93,13 +93,17 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
     using std::chrono::microseconds;
 
     auto t1 = high_resolution_clock::now();
+    
+    bool movetime_specified = false;
 
     int safety_overhead = 50;
     int max_time = movetime;
     int panic_time = 0;
     int moves_to_go = ((winc && board.side_to_move == WHITE) || (binc && board.side_to_move == BLACK) ? 20 : 45);
-    if (movetime != INT_MAX)
+    if (movetime != INT_MAX) {
+        movetime_specified = true;
         goto movetime_calc;
+    }
     else {
         if (wtime > 0 || btime > 0) {
             int base_time = 0;
@@ -142,10 +146,10 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
             break;
         }
 
-        if (i > 2 && (previous_score - score) > 50 && (movetime+panic_time-safety_overhead) < max_time) {
+        if (!movetime_specified && i > 2 && (previous_score - score) > 50 && (movetime+panic_time-safety_overhead) < max_time) {
             movetime += panic_time;
             if (debug_mode)
-                std::cout << "info string Expanding window due to eval score drop." << "\n";
+                std::cout << "info string Using panic time due to eval score drop." << "\n";
         }
 
         previous_score = score;
@@ -160,9 +164,7 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
 
         total_time += ms;
 
-        if (movetime != INT_MAX) {
-            movetime -= (total_time/1000);
-        }
+        movetime -= (total_time/1000);
 
         if (ms) { nps = (int)(search.searchedPositions*(1000000/ms)); }
         else { nps = 0; }

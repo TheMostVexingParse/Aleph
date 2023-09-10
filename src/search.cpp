@@ -38,6 +38,9 @@ public:
             return 0;
         }
         // bool bSearchPv = true;
+
+        HASH_HIST.arghash[HISTORY.cmove+1] = board.hash;
+
         for (int i = 0; i < 256; i++) {
             if (stop) {
                 delete[] moves;
@@ -51,13 +54,6 @@ public:
             nullCheck.makeNullMove();
             if (nullCheck.isInCheck()) continue;
             int score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
-            // else {
-            //     score = -alphaBeta(&line, copy, depth - 1, -alpha-1, -alpha, -color, 1, movetime, true);
-            //     if (score > alpha && score < beta) { 
-            //         score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, 1, movetime, true);
-
-            //     }
-            // }
 
             if (stop) {
                 delete[] moves;
@@ -152,25 +148,23 @@ public:
 
         bool isInCheck = false;
 
+        int pieceCount = bitcount(board.original_bitboards[1] | board.original_bitboards[2] | board.original_bitboards[3] | board.original_bitboards[4] |
+                                  board.original_bitboards[7] | board.original_bitboards[8] | board.original_bitboards[9] | board.original_bitboards[10] );
+
         if (board.isInCheck()){
             isInCheck = true;
             root_extensions++;
         }
-        // else if (doNull && depth > 3 && bitcount(~board.pieces[0]) > 14){
-        //     int reduction = depth > 6 ? 3 : 2;
-        //     Board copy(board);
-        //     copy.makeNullMove();
-        //     LINE discard_line;
-        //     int score = -alphaBeta(&discard_line, copy, std::max(depth - 1 - reduction, 1), -beta, 1-beta, -color, pdepth+1, movetime, false, false); // -AlphaBeta (0-beta, 1-beta, depth-R-1)
-        //     if (score >= beta ) {
-        //         return beta;
-        //         // depth = std::max(1, depth-3);
-        //         // if ( depth <= 0 ){
-        //         //     pline->cmove = 0;
-        //         //     return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
-        //         // }
-        //     }
-        // }
+        else if (doNull && !isInCheck && depth >= 3 && pieceCount > 0 && bitcount(~board.pieces[0]) > 14){
+            int reduction = 2;
+            Board copy(board);
+            copy.makeNullMove();
+            LINE discard_line;
+            int score = -alphaBeta(&discard_line, copy, std::max(depth - 1 - reduction + root_extensions - root_reductions, 1), -beta, 1-beta, -color, pdepth+1, movetime, false, false); // -AlphaBeta (0-beta, 1-beta, depth-R-1)
+            if (score >= beta ) {
+                return beta;
+            }
+        }
 
         if (depth <= 0) {
             pline->cmove = 0;
@@ -197,6 +191,16 @@ public:
 
         // bool bSearchPv = true;
 
+        int repetitions = 0;
+        for (int j = 0; j < 256; j++) {
+            repetitions += HASH_HIST.arghash[j] == board.hash;
+            if (repetitions > 2) {
+                return 0;
+            }
+        }
+
+        HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
+
         for (int i = 0; i < 256; i++) {
             if (stop) return 0;
             uint16_t move = moves[i];
@@ -209,19 +213,7 @@ public:
             if (nullCheck.isInCheck()) continue;
             legalMoves++;
 
-            bool do_full_search = false;
-
-            int repetitions = 0;
-            for (int j = 0; j < 256; j++) {
-                repetitions += HASH_HIST.arghash[j] == board.hash;
-                if (repetitions >= 2) {
-                    score = 0;
-                    goto repetition;
-                }
-            }
-
-            HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
-            
+            bool do_full_search = false;            
             
             // score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
             
@@ -237,8 +229,6 @@ public:
             if (do_full_search) {
                 score = -alphaBeta(&line, copy, depth - 1, -beta, -alpha, -color, pdepth+1, movetime, doNull);
             }
-
-            repetition:
 
             if (stop) return 0;
 
@@ -339,7 +329,7 @@ public:
 
         bool check = board.isInCheck();
 
-        const auto moves = board.generateMoves(depth, pdepth);
+        const auto moves = board.generateQuiescence();
 
         if (!moves[0]){
             if (!board.isInCheck()) {

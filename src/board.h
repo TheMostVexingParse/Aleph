@@ -323,6 +323,8 @@ const uint64_t isolated_pawns[8] = {
      0b0100000001000000010000000100000001000000010000000100000001000000 ,
 };
 
+const int king_safety[]      = { 0, 0, 20, 55, 78, 86, 94, 99};
+const int values[] = {100, 300, 330, 500, 900};
 const int mg_values[5]       = { 86, 337, 365, 500, 1025 };
 const int eg_values[5]       = { 100, 295, 320, 550,  936 };
 const int phase_scores[5]    = { 0,  1  ,  1 ,  2 ,  4   };
@@ -688,8 +690,9 @@ class Board {
         }
 
         int scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0);
-        int scoreCaptureMove(uint16_t move, uint32_t entry);
+        int scoreQuiescence(uint16_t move);
         int scoreThreadMove(uint16_t move, uint32_t entry);
+        int see(uint16_t move);
 
         int getScore() {
             
@@ -698,10 +701,6 @@ class Board {
             int mobility_score = 0;
             int attacks = 0;
             int game_phase = 0;
-
-            bool is_stable = true;
-
-            const int values[] = {100, 300, 330, 500, 900};
 
             uint64_t white_king = original_bitboards[5];
             uint64_t black_king = original_bitboards[11];
@@ -716,31 +715,36 @@ class Board {
 
             int left_pieces = bitcount(~pieces[0]);
 
-            // score += values[0] * (bitcount(original_bitboards[0]) - bitcount(original_bitboards[6]));
-            // score += values[1] * (bitcount(original_bitboards[1]) - bitcount(original_bitboards[7]));
-            // score += values[2] * (bitcount(original_bitboards[2]) - bitcount(original_bitboards[8]));
-            // score += values[3] * (bitcount(original_bitboards[3]) - bitcount(original_bitboards[9]));
-            // score += values[4] * (bitcount(original_bitboards[4]) - bitcount(original_bitboards[10]));
-
             for (int i=0; i<5; i++) {
                 int wbitcount = bitcount(original_bitboards[i]);
                 int bbitcount = bitcount(original_bitboards[6+i]);
                 game_phase += phase_scores[i] * (wbitcount + bbitcount);
-                score += values[i] * (wbitcount - bbitcount);
-                if (i && (wbitcount - bbitcount) != 0) is_stable = false;
+                mg_score += mg_values[i] * (wbitcount - bbitcount);
+                eg_score += eg_values[i] * (wbitcount - bbitcount);
                 pst_score += pst(original_bitboards[i], white_pst_table[i]);
                 pst_score -= pst(original_bitboards[6+i], black_pst_table[i]);
             }
 
-            if (left_pieces < 5 && !original_bitboards[0] && !original_bitboards[6] && !original_bitboards[4] && !original_bitboards[10]) {
+            
+
+            if (left_pieces < 7 && !original_bitboards[0] && !original_bitboards[6] && !original_bitboards[4] && !original_bitboards[10]) {
                 int absscore = abs(score);
-                if (absscore == 2 * values[1]) return 0;
-                if (absscore == values[1] || absscore == values[2]) return 0;
-                else if (absscore == values[2] - values[1]) return 0;
-                else if (absscore == values[3] - values[1]) return 0;
-                else if (absscore == values[3] - values[2]) return 0;
+                if (absscore == 2 * values[1]) return pst_score / 4;
+                if (absscore == values[1] || absscore == values[2]) return pst_score / 4;
+                else if (absscore == values[2] - values[1]) return pst_score / 4;
+                else if (absscore == values[3] - values[1]) return pst_score / 4;
+                else if (absscore == values[3] - values[2]) return pst_score / 4;
             }
 
+            int wking_bpawn_tropism_penalty = 0;
+            int bking_wpawn_tropism_penalty = 0;
+            int wking_wpawn_tropism_score = 0;
+            int bking_bpawn_tropism_score = 0;
+            int wking_bpawn_weights = 1;
+            int bking_wpawn_weights = 1;
+
+            int w_passed_pawns = 0;
+            int b_passed_pawns = 0;
             
             uint64_t white_pawns = original_bitboards[0];
             uint64_t black_pawns = original_bitboards[6];
@@ -753,9 +757,19 @@ class Board {
                 int rank = sq >> 3;
                 white_pawns &= white_pawns - 1;
                 uint64_t forward_mask = filled_board << (8 * rank + 8);
+                int passed_mul = (forward_mask & original_bitboards[9]) ? 16 : 24;
                 bool passed_pawn = !(forward_mask & black_pawns_copy & (double_pawns[file] | isolated_pawns[file]));
-                if (passed_pawn) eg_score += 12 * rank;
+                if (passed_pawn) eg_score += passed_mul * rank;
                 if (passed_pawn && black_pawn_move_lookup_table[sq] & white_pawns_copy) eg_score += 12;
+                int weight;
+                if (passed_pawn) { w_passed_pawns++; weight = 6; }
+                else if (isolated_pawns[file] & original_bitboards[11]) weight = 8;
+                else if (!(isolated_pawns[file] & original_bitboards[0])) weight = 5;
+                else weight = 2;
+                bking_wpawn_tropism_penalty += weight * manhattanDistance(sq, bking_square);
+                wking_wpawn_tropism_score += weight * manhattanDistance(sq, wking_square);
+                bking_wpawn_weights += weight;
+                
             }
 
             while (black_pawns){
@@ -764,13 +778,48 @@ class Board {
                 int rank = sq >> 3;
                 black_pawns &= black_pawns - 1;
                 uint64_t forward_mask = filled_board >> (8 * (7 - rank) + 8);
+                int passed_mul = (forward_mask & original_bitboards[3]) ? 16 : 24;
                 bool passed_pawn = !(forward_mask & white_pawns_copy & (double_pawns[file] | isolated_pawns[file]));
-                if (passed_pawn) eg_score -= 12 * (7 - rank);
+                if (passed_pawn) eg_score -= passed_mul * (7 - rank);
                 if (passed_pawn && white_pawn_move_lookup_table[sq] & black_pawns_copy) eg_score -= 12;
+                int weight;
+                if (passed_pawn) { b_passed_pawns++; weight = 6; }
+                else if (isolated_pawns[file] & original_bitboards[5]) weight = 8;
+                else if (!(isolated_pawns[file] & original_bitboards[6])) weight = 5;
+                else weight = 2;
+                wking_bpawn_tropism_penalty += weight * manhattanDistance(sq, wking_square);
+                bking_bpawn_tropism_score += weight * manhattanDistance(sq, bking_square);
+                wking_bpawn_weights += weight;
             }
 
             score += pst_score;
-        
+
+            int op_tropism_depth_adj = 1; 
+            int se_tropism_depth_adj = 1; 
+
+            if(~pieces[0] == (original_bitboards[0] | original_bitboards[6] | original_bitboards[5] | original_bitboards[11])) {
+                se_tropism_depth_adj = 0;
+                op_tropism_depth_adj = 1;
+            }
+            if (left_pieces < 5) {
+                se_tropism_depth_adj = 1;
+                op_tropism_depth_adj = 2;
+            }
+            else if (left_pieces < 10) {
+                se_tropism_depth_adj = 2;
+                op_tropism_depth_adj = 1;
+            }
+
+            eg_score -= (wking_bpawn_tropism_penalty / wking_bpawn_weights) * op_tropism_depth_adj;
+            eg_score += (bking_wpawn_tropism_penalty / bking_wpawn_weights) * op_tropism_depth_adj;
+            eg_score += (wking_wpawn_tropism_score / wking_bpawn_weights) * se_tropism_depth_adj;
+            eg_score -= (bking_bpawn_tropism_score / bking_wpawn_weights) * se_tropism_depth_adj;
+
+            int w_attacking_pieces = 0;
+            int w_value_of_attacks = 0;
+
+            int b_attacking_pieces = 0;
+            int b_value_of_attacks = 0;
 
             uint64_t wking_defence_bb = wking_defence_table[wking_square];
             score -= bitcount(wking_defence_bb & pieces[0]) * 3;
@@ -782,97 +831,98 @@ class Board {
             score += bitcount(bking_defence_bb & pieces[1]) * 6;
             score -= bitcount(bking_defence_bb & pieces[2]) * 3;
 
-            if (isInCheck()) {
-                if (side_to_move == WHITE) {
-                    score -= 30;
-                    eg_score -= 20;
-                } else {
-                    score += 30;
-                    eg_score += 20;
-                }
+            uint64_t occupied = ~pieces[0];
+
+            uint64_t wknights = original_bitboards[1];
+            uint64_t bknights = original_bitboards[7];
+            uint64_t wbishops = original_bitboards[2];
+            uint64_t bbishops = original_bitboards[8];
+            uint64_t wrooks = original_bitboards[3];
+            uint64_t brooks = original_bitboards[9];
+            uint64_t wqueen = original_bitboards[4];
+            uint64_t bqueen = original_bitboards[10];
+
+            uint64_t wvalp = white_king | wking_defence_bb;
+            uint64_t bvalp = black_king | bking_defence_bb;
+
+            while (wknights) {
+                int sq = getlsb(wknights);
+                uint64_t moves = knight_move_lookup_table[sq] & (~pieces[1]);
+                uint64_t attacks = moves & bvalp;
+                wknights ^= (1ULL << sq);
+                if (!attacks) continue;
+                w_attacking_pieces++;
+                w_value_of_attacks += bitcount(attacks) * 20;
             }
 
-            // uint64_t occupied = ~pieces[0];
+            while (bknights) {
+                int sq = getlsb(bknights);
+                uint64_t moves = knight_move_lookup_table[sq] & (~pieces[2]);
+                uint64_t attacks = moves & wvalp;
+                bknights ^= (1ULL << sq);
+                if (!attacks) continue;
+                b_attacking_pieces++;
+                b_value_of_attacks += bitcount(attacks) * 20;
+            }
+            while (wbishops) {
+                int sq = getlsb(wbishops);
+                uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[1]);
+                uint64_t attacks = moves & bvalp;
+                wbishops ^= (1ULL << sq);
+                if (!attacks) continue;
+                w_attacking_pieces++;
+                w_value_of_attacks += bitcount(attacks) * 20;
+            }
+            while (bbishops) {
+                int sq = getlsb(bbishops);
+                uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[2]);
+                uint64_t attacks = moves & wvalp;
+                bbishops ^= (1ULL << sq);
+                if (!attacks) continue;
+                b_attacking_pieces++;
+                b_value_of_attacks += bitcount(attacks) * 20;
+            }
+            while (wrooks) {
+                int sq = getlsb(wrooks);
+                uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[1]);
+                uint64_t attacks = moves & bvalp;
+                wrooks ^= (1ULL << sq);
+                if (!attacks) continue;
+                w_attacking_pieces++;
+                w_value_of_attacks += bitcount(attacks) * 40;
+            }
+            while (brooks) {
+                int sq = getlsb(brooks);
+                uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[2]);
+                uint64_t attacks = moves & wvalp;
+                brooks ^= (1ULL << sq);
+                if (!attacks) continue;
+                b_attacking_pieces++;
+                b_value_of_attacks += bitcount(attacks) * 40;
+            }
+            while (wqueen) {
+                int sq = getlsb(wqueen);
+                wqueen ^= (1ULL << sq);
+                uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[1]);
+                uint64_t attacks = moves & bvalp;
+                if (!attacks) continue;
+                w_attacking_pieces++;
+                w_value_of_attacks += bitcount(attacks) * 80;
+            }
+            while (bqueen) {
+                int sq = getlsb(bqueen);
+                bqueen ^= (1ULL << sq);
+                uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[2]);
+                uint64_t attacks = moves & wvalp;
+                if (!attacks) continue;
+                b_attacking_pieces++;
+                b_value_of_attacks += bitcount(attacks) * 80;
+            }
 
-            // uint64_t wknights = original_bitboards[1];
-            // uint64_t bknights = original_bitboards[7];
-            // uint64_t wbishops = original_bitboards[2];
-            // uint64_t bbishops = original_bitboards[8];
-            // uint64_t wrooks = original_bitboards[3];
-            // uint64_t brooks = original_bitboards[9];
-            // uint64_t wqueen = original_bitboards[4];
-            // uint64_t bqueen = original_bitboards[10];
+            int w_attack_score = w_value_of_attacks * king_safety[w_attacking_pieces] / 100; //   / 100
+            int b_attack_score = b_value_of_attacks * king_safety[b_attacking_pieces] / 100;      
 
-            // uint64_t wvalp = wrooks | white_king | wking_defence_bb;
-            // uint64_t bvalp = brooks | black_king | bking_defence_bb;
-
-            // while (wknights) {
-            //     int sq = getlsb(wknights);
-            //     uint64_t moves = knight_move_lookup_table[sq] & (~pieces[1]);
-            //     // int mobility = bitcount(moves) * knight_mobility;
-            //     // mg_score += mobility;
-            //     score += (bitcount(moves & bvalp) * 3 * AGGRESSIVENESS) / 8;
-            //     wknights ^= (1ULL << sq);
-            // }
-            // while (bknights) {
-            //     int sq = getlsb(bknights);
-            //     uint64_t moves = knight_move_lookup_table[sq] & (~pieces[2]);
-            //     // int mobility = bitcount(moves) * knight_mobility;
-            //     // mg_score -= mobility;
-            //     score -= (bitcount(moves & wvalp) * 3 * AGGRESSIVENESS) / 8;
-            //     bknights ^= (1ULL << sq);
-            // }
-            // while (wbishops) {
-            //     int sq = getlsb(wbishops);
-            //     uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[1]);
-            //     // int mobility = bitcount(moves) * bishop_mobility;
-            //     // mg_score += mobility;
-            //     score += (bitcount(moves & bvalp) * 4 * AGGRESSIVENESS) / 8;
-            //     wbishops ^= (1ULL << sq);
-            // }
-            // while (bbishops) {
-            //     int sq = getlsb(bbishops);
-            //     uint64_t moves = get_bishop_attacks(sq, occupied) & (~pieces[2]);
-            //     // int mobility = bitcount(moves) * bishop_mobility;
-            //     // mg_score -= mobility;
-            //     score -= (bitcount(moves & wvalp) * 4 * AGGRESSIVENESS) / 8;
-            //     bbishops ^= (1ULL << sq);
-            // }
-            // while (wrooks) {
-            //     int sq = getlsb(wrooks);
-            //     uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[1]);
-            //     // int mobility = bitcount(moves) * rook_mobility;
-            //     // mg_score += mobility;
-            //     if (!(double_pawns[sq & 7] & pieces[1])) score += 25;
-            //     score += (bitcount(moves & bvalp) * 4 * AGGRESSIVENESS) / 8;
-            //     wrooks ^= (1ULL << sq);
-            // }
-            // while (brooks) {
-            //     int sq = getlsb(brooks);
-            //     uint64_t moves = get_rook_attacks(sq, occupied) & (~pieces[2]);
-            //     // int mobility = bitcount(moves) * rook_mobility;
-            //     // mg_score -= mobility;
-            //     if (!(double_pawns[sq & 7] & pieces[3])) score -= 25;
-            //     score -= (bitcount(moves & wvalp) * 4 * AGGRESSIVENESS) / 8;
-            //     brooks ^= (1ULL << sq);
-            // }
-            // while (wqueen) {
-            //     int sq = getlsb(wqueen);
-            //     wqueen ^= (1ULL << sq);
-            //     uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[1]);
-            //     // int mobility = bitcount(moves) * queen_mobility;
-            //     // mg_score += mobility;
-            //     score += (bitcount(moves & bvalp) * 2 * AGGRESSIVENESS) / 8;
-            // }
-            // while (bqueen) {
-            //     int sq = getlsb(bqueen);
-            //     bqueen ^= (1ULL << sq);
-            //     uint64_t moves = (get_rook_attacks(sq, occupied) | get_bishop_attacks(sq, occupied)) & (~pieces[2]);
-            //     // int mobility = bitcount(moves) * queen_mobility;
-            //     // mg_score -= mobility;
-            //     score -= (bitcount(moves & wvalp) * 2 * AGGRESSIVENESS) / 8;
-            // }
-
+            mg_score += w_attack_score - b_attack_score;
             
             score += ((mg_score * game_phase) + (eg_score * (24 - game_phase))) / 24;
 
@@ -1181,6 +1231,217 @@ class Board {
 
             return moves;
         }
+
+        uint16_t * generateQuiescence() {
+            updateBoard();
+
+            uint16_t* moves = new uint16_t[256];
+            memset(moves, 0, 256*sizeof(*moves));
+
+            int append_index = 0;
+
+            int curr_color = (side_to_move >> 3) & 3;
+
+            uint64_t occp_curr_side = pieces[curr_color];
+            uint64_t occp_opp_side = pieces[~(curr_color) & 3];
+
+            int piece_index_offset = (side_to_move == WHITE ? 0 : 6);
+
+            uint64_t pawns_bb = original_bitboards[0 + piece_index_offset];
+            uint64_t knights_bb = original_bitboards[1 + piece_index_offset];
+            uint64_t king_bb = original_bitboards[5 + piece_index_offset];
+
+            while (pawns_bb) {
+
+                int square = getlsb(pawns_bb);
+                pawns_bb &= pawns_bb - 1;
+                int shift_multiplier = ((side_to_move == WHITE) ? 1 : -1);
+                int next_square = square + shift_multiplier * 8;
+                int left_capture_square = square + shift_multiplier * 7;
+                int right_capture_square = square + shift_multiplier * 9;
+
+                if (left_capture_square >= 0 && left_capture_square < 64 && (abs((square>>3) - (left_capture_square>>3)) == 1)) {
+                        uint64_t target_mask = 1ULL << left_capture_square;
+
+                        if (occp_opp_side & target_mask) {
+                            moves[append_index] = ENCODE_MOVE(square, left_capture_square);
+                            append_index++;
+                        }
+                }
+
+                if (right_capture_square >= 0 && right_capture_square < 64 && (abs((square>>3) - (right_capture_square>>3)) == 1)) {
+                        uint64_t target_mask = 1ULL << right_capture_square;
+
+                        if (occp_opp_side & target_mask) {
+                            moves[append_index] = ENCODE_MOVE(square, right_capture_square);
+                            append_index++;
+                        }
+                }
+
+                if (en_passant_square != -1) {
+                    int file = (square & 7);
+                    int rank = (square >> 3);
+                    int en_passant_file = en_passant_square & 7;
+                    int en_passant_rank = (en_passant_square >> 3) & 7;
+
+                    if (en_passant_rank == (rank + shift_multiplier) && ((en_passant_file == file - 1 && file != 0) || en_passant_file == file + 1 && file != 7)) {
+
+                        moves[append_index] = ENCODE_MOVE(square, en_passant_square);
+                        append_index++;
+                    }
+                }
+
+                if (!(pieces[0] & leftShift(1ULL, shift_multiplier * (square + shift_multiplier * 8)))) { continue; }
+                moves[append_index] = ENCODE_MOVE(square, square + shift_multiplier * 8);
+                append_index++;
+                if ((square < 16 && square > 7 && shift_multiplier == 1) || (square > 47 && square < 56 && shift_multiplier == -1)) {
+                    if (!(pieces[0] & leftShift(1ULL, shift_multiplier * (square + shift_multiplier * 16)))) { continue; }
+                    moves[append_index] = ENCODE_MOVE(square, square + shift_multiplier * 16);
+                    append_index++; 
+                }
+            }
+
+            while (knights_bb) {
+
+                int square = getlsb(knights_bb);
+                knights_bb &= knights_bb - 1;
+                uint64_t mask = knight_move_lookup_table[square];
+                while (mask != 0) {
+
+                    int target_square = getlsb(mask);
+                    mask &= mask - 1;
+                    if (occp_curr_side & (1ULL << target_square)) { continue; }
+                    moves[append_index] = ENCODE_MOVE(square, target_square);
+                    append_index++;
+                }
+            }
+
+            if(king_bb == 0) {
+                memset(moves, 0, 256*sizeof(*moves));
+                return moves;
+            }
+            int king_square = getlsb(king_bb);
+            uint64_t mask = king_move_lookup_table[king_square];
+            while (mask != 0) {
+                int target_king_square = getlsb(mask);
+                mask &= mask - 1;
+                if (occp_curr_side & (1ULL << target_king_square)) { continue; }
+                if (isSquareAttacked(target_king_square)) continue;
+                moves[append_index] = ENCODE_MOVE(king_square, target_king_square);
+                append_index++;
+            }
+            if (side_to_move == WHITE) {
+                if (white_castling_right) {
+                    if ((white_castling_right == 1 || white_castling_right == 3) && ((white_short_castling & pieces[0]) == white_short_castling)) {
+                        if (!isSquareAttacked(6) && !isSquareAttacked(5) && !isInCheck()){
+                            moves[append_index] = ENCODE_MOVE(king_square, 6);
+                            append_index++;
+                        }
+                    }
+                    if ((white_castling_right == 2 || white_castling_right == 3) && ((white_long_castling & pieces[0]) == white_long_castling)) {
+                        if (!isSquareAttacked(2) && !isSquareAttacked(3) && !isInCheck()){
+                            moves[append_index] = ENCODE_MOVE(king_square, 2);
+                            append_index++;
+                        }
+                    }                    
+                }                                              
+            } else {
+                if (black_castling_right) {
+                    if ((black_castling_right == 1 || black_castling_right == 3) && ((black_short_castling & pieces[0]) == black_short_castling)) {
+                        if (!isSquareAttacked(62) && !isSquareAttacked(61) && !isInCheck()){
+                            moves[append_index] = ENCODE_MOVE(king_square, 62);
+                            append_index++;
+                        }
+                    }
+                    if ((black_castling_right == 2 || black_castling_right == 3) && ((black_long_castling & pieces[0]) == black_long_castling)) {
+                        if (!isSquareAttacked(58) && !isSquareAttacked(59) && !isInCheck()){
+                            moves[append_index] = ENCODE_MOVE(king_square, 58);
+                            append_index++;
+                        }
+                    }
+                }  
+            }
+
+            uint64_t bishop_bb = original_bitboards[2 + piece_index_offset];
+            uint64_t rook_bb = original_bitboards[3 + piece_index_offset];
+            uint64_t queen_bb = original_bitboards[4 + piece_index_offset];
+
+            while (bishop_bb) {
+
+                int square = getlsb(bishop_bb);
+                bishop_bb &= bishop_bb - 1;
+                uint64_t b_attacks = get_bishop_attacks(square, ~pieces[0]);
+                while (b_attacks) {
+
+                    int target_square = getlsb(b_attacks);
+                    b_attacks &= b_attacks - 1;
+                    if (pieces[side_to_move >> 3] & (1ULL << target_square)) {
+                        continue;
+                    } else {
+                        moves[append_index] = ENCODE_MOVE(square, target_square);
+                        append_index++;
+                    }
+                }
+            }
+
+            while (rook_bb) {
+
+                int square = getlsb(rook_bb);
+                rook_bb &= rook_bb - 1;
+                uint64_t r_attacks = get_rook_attacks(square, ~pieces[0]);
+                while (r_attacks) {
+
+                    int target_square = getlsb(r_attacks);
+                    r_attacks &= r_attacks - 1;
+                    if (pieces[side_to_move >> 3] & (1ULL << target_square)) {
+                        continue;
+                    } else {
+                        moves[append_index] = ENCODE_MOVE(square, target_square);
+                        append_index++;
+                    }
+
+                }
+            }
+
+            while (queen_bb) {
+
+                int square = getlsb(queen_bb);
+                queen_bb &= queen_bb - 1;
+                uint64_t q_attacks = get_bishop_attacks(square, ~pieces[0]) | get_rook_attacks(square, ~pieces[0]);
+                while (q_attacks) {
+
+                    int target_square = getlsb(q_attacks);
+                    q_attacks &= q_attacks - 1;
+                    if (pieces[side_to_move >> 3] & (1ULL << target_square)) {
+                        continue;
+                    } else {
+                        moves[append_index] = ENCODE_MOVE(square, target_square);
+                        append_index++;
+                    }
+                }
+            }
+
+            struct ScoredMove {
+                uint16_t move;
+                int score;
+            };
+            ScoredMove scored_moves[256];
+            memset(scored_moves, 0, 256*sizeof(*scored_moves));
+            for (int i = 0; i < append_index; i++) {
+                uint16_t move = moves[i];
+                scored_moves[i] = { move, scoreQuiescence(move) };
+            }
+            std::sort(scored_moves, scored_moves + append_index,
+                [](const ScoredMove& a, const ScoredMove& b) {
+                    return a.score > b.score;
+                });
+            for (int i = 0; i < append_index; i++) {
+                moves[i] = scored_moves[i].move;
+            }
+
+            return moves;
+        }
+
 
         uint16_t * generateMovesWithoutSorting() {
             updateBoard();
