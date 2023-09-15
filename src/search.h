@@ -2,10 +2,17 @@
 
 #include "board.h"
 
-#define EXACT       1
-#define LOWERBOUND  2
-#define UPPERBOUND  3
-#define EMPTY_MOVE  0
+#define EXACT                       1
+#define LOWERBOUND                  2
+#define UPPERBOUND                  3
+#define FAILBOUND                   4
+
+#define EMPTY_MOVE                  0
+
+#define FRONTIER_NODE               1
+#define PRE_FRONTIER_NODE           2
+#define PRE_PRE_FRONTIER_NODE       3
+
 
 typedef struct LINE {
     int cmove = 0;             

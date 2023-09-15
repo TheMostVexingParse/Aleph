@@ -694,6 +694,49 @@ class Board {
         int scoreThreadMove(uint16_t move, uint32_t entry);
         int see(uint16_t move);
 
+        inline int phase() {
+            int game_phase = 0;
+            for (int i=0; i<5; i++) {
+                int wbitcount = bitcount(original_bitboards[i]);
+                int bbitcount = bitcount(original_bitboards[6+i]);
+                game_phase += phase_scores[i] * (wbitcount + bbitcount);
+            }
+            return game_phase;
+        }
+
+
+        int matGain(uint16_t move) {
+            int toSq = move & 0b111111;
+            int mg_gain = 0;
+            int eg_gain = 0;
+            int game_phase = phase();
+            for (int i=0; i<5; i++) {
+                if ((original_bitboards[i] & (1ULL << toSq)) || 
+                    (original_bitboards[i+6] & (1ULL << toSq))) {
+                    mg_gain = mg_values[i];
+                    eg_gain = eg_values[i];
+                    game_phase -= phase_scores[i];
+                    break;
+                }
+            }
+            return ((mg_gain * game_phase) + (eg_gain * (24 - game_phase))) / 24;
+        }
+
+
+        int matBalance() {
+            int game_phase = 0;
+            int mg_score = 0;
+            int eg_score = 0;
+            for (int i=0; i<5; i++) {
+                int wbitcount = bitcount(original_bitboards[i]);
+                int bbitcount = bitcount(original_bitboards[6+i]);
+                game_phase += phase_scores[i] * (wbitcount + bbitcount);
+                mg_score += mg_values[i] * (wbitcount - bbitcount);
+                eg_score += eg_values[i] * (wbitcount - bbitcount);
+            }
+            return ((mg_score * game_phase) + (eg_score * (24 - game_phase))) / 24;
+        }
+
         int getScore() {
             
             int score = 0;
@@ -751,6 +794,8 @@ class Board {
             uint64_t white_pawns_copy = white_pawns;
             uint64_t black_pawns_copy = black_pawns;
 
+            bool total_passed = false;
+
             while (white_pawns){
                 int sq = getlsb(white_pawns);
                 int file = sq & 7;
@@ -769,7 +814,7 @@ class Board {
                 bking_wpawn_tropism_penalty += weight * manhattanDistance(sq, bking_square);
                 wking_wpawn_tropism_score += weight * manhattanDistance(sq, wking_square);
                 bking_wpawn_weights += weight;
-                
+                total_passed = total_passed || passed_pawn;
             }
 
             while (black_pawns){
@@ -790,6 +835,7 @@ class Board {
                 wking_bpawn_tropism_penalty += weight * manhattanDistance(sq, wking_square);
                 bking_bpawn_tropism_score += weight * manhattanDistance(sq, bking_square);
                 wking_bpawn_weights += weight;
+                total_passed = total_passed || passed_pawn;
             }
 
             score += pst_score;
@@ -804,10 +850,14 @@ class Board {
             if (left_pieces < 5) {
                 se_tropism_depth_adj = 1;
                 op_tropism_depth_adj = 2;
-            }
-            else if (left_pieces < 10) {
+            } else if (left_pieces < 10) {
                 se_tropism_depth_adj = 2;
                 op_tropism_depth_adj = 1;
+            }
+
+            if (total_passed && abs(score) > 150) {
+                se_tropism_depth_adj = 3;
+                op_tropism_depth_adj = 3;
             }
 
             eg_score -= (wking_bpawn_tropism_penalty / wking_bpawn_weights) * op_tropism_depth_adj;

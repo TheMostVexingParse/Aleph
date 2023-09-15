@@ -1,6 +1,7 @@
 #include "board.h"
 #include "search.h"
 #include "moveordering.h"
+#include "parameters.h"
 
 std::atomic_bool search_complete = { true };
 
@@ -18,6 +19,7 @@ public:
     int passed_depth = 0;
     uint32_t searchedPositions = 0;
     uint32_t ttHits = 0;
+    uint32_t fprunedNodes = 0;
 
     LINE PVline;
 
@@ -123,6 +125,18 @@ public:
                 }
             }
         }
+
+        int repetitions = 0;
+        for (int j = 0; j < 256; j++) {
+            repetitions += HASH_HIST.arghash[j] == board.hash;
+            if (repetitions > 2) {
+                return 0;
+            }
+        }
+
+        HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
+
+
         uint64_t entry_key = board.hash % table_size;
         if (TT.contains_entry(entry_key, board.hash, depth)){
             ttHits++;
@@ -155,16 +169,47 @@ public:
             isInCheck = true;
             root_extensions++;
         }
-        else if (doNull && !isInCheck && depth >= 3 && pieceCount > 0 && bitcount(~board.pieces[0]) > 14){
+
+        // AEL - Pruning beginning
+
+        // int fmax = 0;
+        // int fscore = 0;
+        // int fpruned_moves = 0;
+
+        bool fprune = false;
+
+        // int material_balance = board.matBalance();
+
+        // fscore = material_balance + razoringMargin; // razoring at pre pre frontier nodes
+        // if (!root_extensions && (depth == PRE_PRE_FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+        // fscore = material_balance + extendedFutilityMargin; // extended futility pruining at pre frontier nodes
+        // if (!root_extensions && (depth == PRE_FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+        // fscore = material_balance + futilityMargin; // futility pruining at frontier nodes
+        // if (!root_extensions && (depth == FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+
+        if (doNull && !fprune && !isInCheck && depth >= 3 && pieceCount > 0 && bitcount(~board.pieces[0]) > 14){
             int reduction = 2;
+            if (depth <= 6 || (depth <= 8 && pieceCount < 5)) reduction = 2;
+            else if ( depth > 8 || (depth > 6 && pieceCount >= 5)) reduction = 3;
             Board copy(board);
             copy.makeNullMove();
             LINE discard_line;
             int score = -alphaBeta(&discard_line, copy, std::max(depth - 1 - reduction + root_extensions - root_reductions, 1), -beta, 1-beta, -color, pdepth+1, movetime, false, false); // -AlphaBeta (0-beta, 1-beta, depth-R-1)
-            if (score >= beta ) {
-                return beta;
-            }
-        }
+            if (score >= beta ) return beta;
+
+        } 
+        // else if (!doNull) {
+        //     doNull = true;
+        // }
 
         if (depth <= 0) {
             pline->cmove = 0;
@@ -191,16 +236,6 @@ public:
 
         // bool bSearchPv = true;
 
-        int repetitions = 0;
-        for (int j = 0; j < 256; j++) {
-            repetitions += HASH_HIST.arghash[j] == board.hash;
-            if (repetitions > 2) {
-                return 0;
-            }
-        }
-
-        HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
-
         for (int i = 0; i < 256; i++) {
             if (stop) return 0;
             uint16_t move = moves[i];
@@ -208,17 +243,26 @@ public:
             int score;
             Board copy(board);
             copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
-            Board nullCheck(copy);
+
+            // if (fprune && (fmax + board.matGain(move) <= alpha) && !copy.isInCheck()) {
+            //     // std::cout << "Pruned: " << board.matGain(move) << "     Alpha: " << alpha << "     Fmax: " << fmax << "\n";
+            //     continue;
+            // }
+            
+            Board nullCheck(copy); // it is somehow faster ??? wtf ???
             nullCheck.makeNullMove();
             if (nullCheck.isInCheck()) continue;
+
             legalMoves++;
 
-            bool do_full_search = false;            
+            bool do_full_search = false;
             
             // score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
+
+            int lmr_moves = 3 + 2 * depth * depth;
             
             if (i > 12 && depth >= 3 && !board.isCapture((move >> 6) & 0b111111, move & 0b111111) && !board.isInCheck()){
-                const int lmr = 1;
+                constexpr int lmr = 1;
                 score = -alphaBeta(&line, copy, depth - 1 - lmr, -alpha-1, -alpha, -color, pdepth+1, movetime, doNull);
                 if (score > alpha)
                     do_full_search = true;
@@ -281,7 +325,7 @@ public:
             TT.add_position(board, bestMove, depth, bestScore, EXACT);
         }
         delete[] moves;
-        return alpha;
+        return bestScore;
 
     }
 
@@ -327,7 +371,31 @@ public:
             alpha = stand_pat;
         }
 
-        bool check = board.isInCheck();
+        // int fmax = 0;
+        // int fscore = 0;
+        // int fpruned_moves = 0;
+
+        // bool fprune = 0;
+
+        // int material_balance = board.matBalance();
+
+        // fscore = material_balance + razoringMargin; // razoring at pre pre frontier nodes
+        // if ((depth == PRE_PRE_FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+        // fscore = material_balance + extendedFutilityMargin; // extended futility pruining at pre frontier nodes
+        // if ((depth == PRE_FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+        // fscore = material_balance + futilityMargin; // futility pruining at frontier nodes
+        // if ((depth == FRONTIER_NODE) && (fscore <= alpha)) {
+        //     fprune = true;
+        //     fmax = fscore;
+        // }
+
+        // bool check = board.isInCheck();
 
         const auto moves = board.generateQuiescence();
 
@@ -349,7 +417,12 @@ public:
             Board copy(board);
             copy.makeMove((move >> 6) & 0b111111, move & 0b111111);
 
-            if (board.isCapture((move >> 6) & 0b111111, move & 0b111111) || copy.isInCheck()) {
+            // if (fprune && (fmax + board.matGain(move) <= alpha)) {
+            //     fprunedNodes++;
+            //     continue;
+            // }
+
+            if (board.isCapture((move >> 6) & 0b111111, move & 0b111111)) { //|| copy.isInCheck()) {
 
                 int score = -quiescenceSearch(copy, -beta, -alpha, -color, pdepth+1, movetime, depth+1);
 
