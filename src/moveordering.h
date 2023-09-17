@@ -6,8 +6,8 @@ int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
     if (move == EMPTY) return INT_MIN;
     int fromsq = (move >> 6) & 0b111111;
     int tosq = move & 0b111111;
-    int fromPiece = getSquare(fromsq) & 7;
-    int toPiece = getSquare(tosq) & 7;
+    int prevfrsq = (last_move >> 6) & 0b111111;
+    int prevtosq = last_move & 0b111111;
 
     int score = 0;
 
@@ -24,7 +24,9 @@ int Board::scoreMove(uint16_t move, uint32_t entry, int depth, int pdepth=0){
         if (see_score > -135) score += 8192 + see_score;
         else score += see_score;
         // score += 8192 + (9 * (toPiece&0b111) - (fromPiece&0b111)) * 100;
-    }
+    } else if (COUNTER_MOVE_HEURISTICS[prevfrsq][prevtosq] == move) {
+        score += 512;
+    } 
     
     return score;
 }
@@ -37,7 +39,7 @@ int Board::scoreQuiescence(uint16_t move){
     int fromPiece = getSquare(fromsq);
     int toPiece = getSquare(tosq);
     if (isCapture(fromsq, tosq)){
-        return 9 * (toPiece&0b111) - (fromPiece&0b111);
+        return (9 * (toPiece&0b111) - (fromPiece&0b111)) * 12 + HISTORY_HEURISTICS[fromsq][tosq];
     } else return INT_MIN + 1;
     
 }

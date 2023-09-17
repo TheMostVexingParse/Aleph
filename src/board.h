@@ -75,8 +75,8 @@
 // #define wking_prot_mask         0b0011100001111100011111000000000000000000000000000000000000000000
 // #define bking_prot_mask         0b0000000000000000011111000111110000111000000000000000000000000000
 
-#define wking_prot_mask         0b0011100001111100000000000000000000000000000000000000000000000000
-#define bking_prot_mask         0b0000000000000000000000000111110000111000000000000000000000000000
+#define wking_prot_mask         0b0000000000111000001010000000000000000000000000000000000000000000
+#define bking_prot_mask         0b0000000000000000001010000011100000000000000000000000000000000000
 
 #define white_short_castling    0b0000000000000000000000000000000000000000000000000000000001100000
 #define white_long_castling     0b0000000000000000000000000000000000000000000000000000000000001110
@@ -538,12 +538,13 @@ class Board {
         uint8_t white_castling_right; 
         uint8_t black_castling_right; 
         uint8_t halfmove_clock; 
-        uint16_t fullmove_number; 
+        uint8_t fullmove_number; 
         uint64_t original_bitboards[12];
 
         int en_passant_square;
 
         uint64_t hash = 0;
+        uint16_t last_move = 0;
 
         Board() {
             side_to_move = WHITE;
@@ -694,6 +695,10 @@ class Board {
         int scoreThreadMove(uint16_t move, uint32_t entry);
         int see(uint16_t move);
 
+        int isThreat(uint16_t move) {
+            return false;
+        }
+
         inline int phase() {
             int game_phase = 0;
             for (int i=0; i<5; i++) {
@@ -794,6 +799,9 @@ class Board {
             uint64_t white_pawns_copy = white_pawns;
             uint64_t black_pawns_copy = black_pawns;
 
+            uint64_t wbishops = original_bitboards[2];
+            uint64_t bbishops = original_bitboards[8];
+
             bool total_passed = false;
 
             while (white_pawns){
@@ -803,6 +811,7 @@ class Board {
                 white_pawns &= white_pawns - 1;
                 uint64_t forward_mask = filled_board << (8 * rank + 8);
                 int passed_mul = (forward_mask & original_bitboards[9]) ? 16 : 24;
+                if (file == 0 || file == 7) passed_mul += 32;
                 bool passed_pawn = !(forward_mask & black_pawns_copy & (double_pawns[file] | isolated_pawns[file]));
                 if (passed_pawn) eg_score += passed_mul * rank;
                 if (passed_pawn && black_pawn_move_lookup_table[sq] & white_pawns_copy) eg_score += 12;
@@ -824,6 +833,7 @@ class Board {
                 black_pawns &= black_pawns - 1;
                 uint64_t forward_mask = filled_board >> (8 * (7 - rank) + 8);
                 int passed_mul = (forward_mask & original_bitboards[3]) ? 16 : 24;
+                if (file == 0 || file == 7) passed_mul += 32;
                 bool passed_pawn = !(forward_mask & white_pawns_copy & (double_pawns[file] | isolated_pawns[file]));
                 if (passed_pawn) eg_score -= passed_mul * (7 - rank);
                 if (passed_pawn && white_pawn_move_lookup_table[sq] & black_pawns_copy) eg_score -= 12;
@@ -871,22 +881,25 @@ class Board {
             int b_attacking_pieces = 0;
             int b_value_of_attacks = 0;
 
+            int wsafety = 0;
+            int bsafety = 0;
+
             uint64_t wking_defence_bb = wking_defence_table[wking_square];
-            score -= bitcount(wking_defence_bb & pieces[0]) * 3;
-            score -= bitcount(wking_defence_bb & pieces[2]) * 6;
-            score += bitcount(wking_defence_bb & pieces[1]) * 3;
+            wsafety -= bitcount(wking_defence_bb & pieces[0]) * 2;
+            wsafety -= bitcount(wking_defence_bb & pieces[2]) * 6;
+            wsafety += bitcount(wking_defence_bb & pieces[1]) * 4;
 
             uint64_t bking_defence_bb = bking_defence_table[bking_square];
-            score += bitcount(bking_defence_bb & pieces[0]) * 3;
-            score += bitcount(bking_defence_bb & pieces[1]) * 6;
-            score -= bitcount(bking_defence_bb & pieces[2]) * 3;
+            bsafety -= bitcount(bking_defence_bb & pieces[0]) * 2;
+            bsafety -= bitcount(bking_defence_bb & pieces[1]) * 6;
+            bsafety += bitcount(bking_defence_bb & pieces[2]) * 4;
+
+            // std::cout << "wsafety: " << wsafety << "bsafety: " << bsafety << std::endl;
 
             uint64_t occupied = ~pieces[0];
 
             uint64_t wknights = original_bitboards[1];
             uint64_t bknights = original_bitboards[7];
-            uint64_t wbishops = original_bitboards[2];
-            uint64_t bbishops = original_bitboards[8];
             uint64_t wrooks = original_bitboards[3];
             uint64_t brooks = original_bitboards[9];
             uint64_t wqueen = original_bitboards[4];
@@ -969,10 +982,20 @@ class Board {
                 b_value_of_attacks += bitcount(attacks) * 80;
             }
 
+            // int battackmul = (wsafety < -4 ? 3 : (wsafety < 0 ? 2 : 1));
+            // int wattackmul = (bsafety < -4 ? 3 : (bsafety < 0 ? 2 : 1));
+
+            score -= bsafety * 3;
+            score += wsafety * 3;
+
             int w_attack_score = w_value_of_attacks * king_safety[w_attacking_pieces] / 100; //   / 100
             int b_attack_score = b_value_of_attacks * king_safety[b_attacking_pieces] / 100;      
 
             mg_score += w_attack_score - b_attack_score;
+
+            if (side_to_move == WHITE)
+                 mg_score += 8;
+            else mg_score -= 8;
             
             score += ((mg_score * game_phase) + (eg_score * (24 - game_phase))) / 24;
 

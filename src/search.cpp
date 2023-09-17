@@ -42,6 +42,7 @@ public:
         // bool bSearchPv = true;
 
         HASH_HIST.arghash[HISTORY.cmove+1] = board.hash;
+        HISTORY.cmove++;
 
         for (int i = 0; i < 256; i++) {
             if (stop) {
@@ -136,7 +137,6 @@ public:
 
         HASH_HIST.arghash[HISTORY.cmove+pdepth+1] = board.hash;
 
-
         uint64_t entry_key = board.hash % table_size;
         if (TT.contains_entry(entry_key, board.hash, depth)){
             ttHits++;
@@ -155,6 +155,11 @@ public:
                     ttHits--;
                     break;
             }                
+        }
+
+        if (depth <= 0) {
+            pline->cmove = 0;
+            return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
         }
 
         int root_extensions = 0;
@@ -176,7 +181,9 @@ public:
         // int fscore = 0;
         // int fpruned_moves = 0;
 
-        bool fprune = false;
+        bool isPVNode = beta - alpha != 1;
+
+        // bool fprune = false;
 
         // int material_balance = board.matBalance();
 
@@ -196,10 +203,38 @@ public:
         //     fmax = fscore;
         // }
 
-        if (doNull && !fprune && !isInCheck && depth >= 3 && pieceCount > 0 && bitcount(~board.pieces[0]) > 14){
-            int reduction = 2;
-            if (depth <= 6 || (depth <= 8 && pieceCount < 5)) reduction = 2;
-            else if ( depth > 8 || (depth > 6 && pieceCount >= 5)) reduction = 3;
+        // if (!isInCheck && abs(beta) < 70000) {
+        //     int static_score = board.getScore();
+        //     int score_margin = staticNullMovePruningBaseMargin * depth;
+        //     if (static_score - score_margin >= beta) {
+        //         return static_score - score_margin;
+        //     }
+        // }
+
+        // // if depth <= 2 && !isPVNode && !inCheck {
+        // //     staticScore := EvaluatePos(&search.Pos)
+        // //     if staticScore+FutilityMargins[depth]*3 < alpha {
+        // //         score := search.Qsearch(alpha, beta, ply, &PVLine{}, 0)
+        // //         if score < alpha {
+        // //             return alpha
+        // //         }
+        // //     }
+        // // }
+
+        // if (depth <= PRE_PRE_FRONTIER_NODE && !isInCheck && !isPVNode) {
+        //     int static_score = board.getScore();
+        //     if (50 + static_score + futilityMargins[depth] * 3 < alpha) {
+        //         int qscore = quiescenceSearch(board, alpha-1, alpha, color, pdepth+1, movetime);
+        //         if (qscore < alpha)
+        //             return alpha;
+        //     }
+        // }
+
+        if (doNull && !isInCheck && depth >= 3 && pieceCount > 0 && bitcount(~board.pieces[0]) > 14){
+            // int reduction = 2;
+            int reduction = 2 + depth / 6;
+            // if (depth <= 6 || (depth <= 8 && pieceCount < 5)) reduction = 2;
+            // else if ( depth > 8 || (depth > 6 && pieceCount >= 5)) reduction = 3;
             Board copy(board);
             copy.makeNullMove();
             LINE discard_line;
@@ -207,13 +242,8 @@ public:
             if (score >= beta ) return beta;
 
         } 
-        // else if (!doNull) {
-        //     doNull = true;
-        // }
-
-        if (depth <= 0) {
-            pline->cmove = 0;
-            return quiescenceSearch(board, alpha, beta, color, pdepth+1, movetime);
+        else if (!doNull) {
+            doNull = true;
         }
 
         int alphaOriginal = alpha;
@@ -233,8 +263,6 @@ public:
         }
 
         int legalMoves = 0;
-
-        // bool bSearchPv = true;
 
         for (int i = 0; i < 256; i++) {
             if (stop) return 0;
@@ -257,11 +285,7 @@ public:
 
             bool do_full_search = false;
             
-            // score = -alphaBeta(&line, copy, depth - 1 - root_reductions + root_extensions, -beta, -alpha, -color, pdepth+1, movetime, doNull);
-
-            int lmr_moves = 3 + 2 * depth * depth;
-            
-            if (i > 12 && depth >= 3 && !board.isCapture((move >> 6) & 0b111111, move & 0b111111) && !board.isInCheck()){
+            if (i > 12 && depth >= 3 && !isInCheck && !board.isCapture((move >> 6) & 0b111111, move & 0b111111)){
                 constexpr int lmr = 1;
                 score = -alphaBeta(&line, copy, depth - 1 - lmr, -alpha-1, -alpha, -color, pdepth+1, movetime, doNull);
                 if (score > alpha)
@@ -283,7 +307,12 @@ public:
 
             if (score >= beta) {
                 delete[] moves;
-                if (!board.isCapture((move >> 6) & 0b111111, move & 0b111111)){
+                int fromsq = (move >> 6) & 0b111111;
+                int tosq = move & 0b111111;
+                int prevfrsq = (board.last_move >> 6) & 0b111111;
+                int prevtosq = board.last_move & 0b111111;
+                if (!board.isCapture(fromsq, tosq)){
+                    COUNTER_MOVE_HEURISTICS[prevfrsq][prevtosq] = move;
                     KILLER_MOVES[1][depth] = KILLER_MOVES[0][depth];
                     KILLER_MOVES[0][depth] = move;
                 }
@@ -293,8 +322,6 @@ public:
 
             if (score > alpha) {
                 alpha = score;
-                // bSearchPv = false;
-
                 PV_TABLE[pdepth][pdepth] = move;
                 for (int next_depth = pdepth+1; next_depth < PV_LENGTH[pdepth]+1; next_depth++) {
                     PV_TABLE[pdepth][next_depth] = PV_TABLE[pdepth+1][next_depth];
@@ -423,6 +450,10 @@ public:
             // }
 
             if (board.isCapture((move >> 6) & 0b111111, move & 0b111111)) { //|| copy.isInCheck()) {
+
+                int see_score = board.see(move);
+
+                if (see_score < 0) continue;
 
                 int score = -quiescenceSearch(copy, -beta, -alpha, -color, pdepth+1, movetime, depth+1);
 

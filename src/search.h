@@ -134,12 +134,13 @@ class HASH_TABLE {
     }
 };
 
-int HISTORY_HEURISTICS[64][64] = {0};
-uint16_t KILLER_MOVES[2][128] = {0};
-HASH_TABLE TT;
+int             HISTORY_HEURISTICS[64][64]          = {0};
+int             PV_LENGTH[128]                      = {0};
+uint16_t        KILLER_MOVES[2][128]                = {0};
+uint16_t        PV_TABLE [128][128]                 = {0};
+uint16_t        COUNTER_MOVE_HEURISTICS[64][64]     = {0};
 
-int             PV_LENGTH[128]      = {0};
-uint16_t        PV_TABLE [128][128] = {0};
 LINE            LOOKUP_LINE;
 HISTORY_LINE    HISTORY;
 HASH_HISTORY    HASH_HIST;
+HASH_TABLE      TT;

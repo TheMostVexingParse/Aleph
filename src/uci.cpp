@@ -126,18 +126,33 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
 
     uint64_t total_time = 0;
 
-    int alpha = -120000;
-    int beta  =  120000;
+
+    constexpr int original_alpha = -120000;
+    constexpr int original_beta = 120000; 
+
+    int alpha = original_alpha;
+    int beta  = original_beta;
     const int MATE_SCORE = 75000;
     int previous_score = 0;
-    int window = 45;
-    int panic_window = 0;
+    int window = 75;
+    int panic_window = 50;
 
     int side_to_move = (board.side_to_move == WHITE ? 1 : -1);
 
     for (int i = 1; i < depth+1; i++) {
 
         int score = search.root_search(board, i, alpha, beta, side_to_move, movetime);
+
+        previous_score = score;
+
+        // if (score <= alpha || score >= beta) {
+        //     alpha = original_alpha;
+        //     beta = original_beta;
+        //     // continue;
+        // } else {
+        //     alpha = previous_score - window;
+        //     beta = previous_score + window;
+        // }
 
         LOOKUP_LINE = search.PVline;
 
@@ -146,13 +161,11 @@ void EngineGo(Board & board, int depth, int movetime, int wtime, int btime, int 
             break;
         }
 
-        if (!movetime_specified && i > 2 && (previous_score - score) > 50 && (movetime+panic_time-safety_overhead) < max_time) {
+        if (!movetime_specified && i > 2 && (previous_score - score) > panic_window && (movetime+panic_time-safety_overhead) < max_time) {
             movetime += panic_time;
             if (debug_mode)
                 std::cout << "info string Using panic time due to eval score drop." << "\n";
         }
-
-        previous_score = score;
 
         if (stop) { stop = false; break; }
 
